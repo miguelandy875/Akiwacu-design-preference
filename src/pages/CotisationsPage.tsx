@@ -27,13 +27,44 @@ import { Montant } from '../components/Montant';
 import { LoadingSkeleton } from '../components/ui-states/LoadingSkeleton';
 import { EmptyState } from '../components/ui-states/EmptyState';
 import { ErrorState } from '../components/ui-states/ErrorState';
+import { useAuth } from '../context/AuthContext';
 import { apiClient } from '../api/client';
 import { ApiError } from '../api/types';
 
 export const CotisationsPage: React.FC = () => {
+  const { user, hasRole } = useAuth();
   const { data: cotisations = [], isLoading, isError, error, refetch } = useCotisationsQuery();
   const { data: membres = [] } = useMembresQuery();
   const { data: cycles = [] } = useCyclesQuery();
+
+  const isAdminOrGestionnaire = hasRole(['ADMIN', 'GESTIONNAIRE']);
+  const isTresorierOnly = hasRole(['TRESORIER']) && !isAdminOrGestionnaire;
+  const isCommissaireOnly = hasRole(['COMMISSAIRE']) && !isAdminOrGestionnaire;
+  const isMembreOnly = !isAdminOrGestionnaire && !isTresorierOnly && !isCommissaireOnly;
+  const canCollect = isAdminOrGestionnaire || isTresorierOnly;
+
+  // Resolve current member profile
+  const currentMember = useMemo(() => {
+    if (!user) return membres[0];
+    return (
+      membres.find((m) => m.utilisateurId === user.utilisateurId) ||
+      membres.find(
+        (m) =>
+          m.nom.toLowerCase() === (user.nom || '').toLowerCase() &&
+          m.prenom.toLowerCase() === (user.prenom || '').toLowerCase()
+      ) ||
+      membres[0]
+    );
+  }, [membres, user]);
+
+  const memberCotisations = useMemo(() => {
+    if (!currentMember) return [];
+    return cotisations.filter((c) => c.membreId === currentMember.id);
+  }, [cotisations, currentMember]);
+
+  const totalMemberCotisations = useMemo(() => {
+    return memberCotisations.reduce((sum, c) => sum + (c.montant || 0), 0);
+  }, [memberCotisations]);
 
   const createCotisationMutation = useCreateCotisationMutation();
   const createBatchMutation = useCreateCotisationBatchMutation();
@@ -44,7 +75,7 @@ export const CotisationsPage: React.FC = () => {
   const standardAmount = activeCycle?.montantCotisation || 50000;
 
   // Mode selection: Compteur (Rapide 1 à 1) vs Batch (Lot) vs Historique
-  const [activeTab, setActiveTab] = useState<'compteur' | 'batch' | 'liste'>('compteur');
+  const [activeTab, setActiveTab] = useState<'compteur' | 'batch' | 'liste'>(canCollect ? 'compteur' : 'liste');
 
   // Compteur State
   const [searchQuery, setSearchQuery] = useState('');
@@ -184,6 +215,139 @@ export const CotisationsPage: React.FC = () => {
     }
   };
 
+  // ==========================================
+  // 1. BESPOKE SCREEN: MEMBRE ADHÉRENT (Carnet personnel R8)
+  // ==========================================
+  if (isMembreOnly) {
+    return (
+      <div className="space-y-6 animate-in fade-in duration-200">
+        {/* Member Header */}
+        <div className="bg-white rounded-[14px] border border-stone-200 p-6 shadow-xs flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+          <div>
+            <div className="flex items-center space-x-2">
+              <span className="text-xs uppercase font-mono font-bold tracking-wider px-2 py-0.5 rounded-[6px] bg-amber-100 text-amber-900">
+                Mon Carnet Individuel
+              </span>
+              <span className="text-xs text-stone-400">·</span>
+              <span className="text-xs text-emerald-700 flex items-center font-medium">
+                <CheckCircle className="w-3.5 h-3.5 mr-1 text-emerald-600" />
+                {currentMember?.prenom} {currentMember?.nom} ({currentMember?.numeroMembre})
+              </span>
+            </div>
+            <h1 className="text-2xl font-extrabold text-stone-900 font-heading mt-2">
+              Mon Carnet de Cotisations
+            </h1>
+            <p className="text-sm text-stone-600 mt-1">
+              Consultez vos cotisations enregistrées et téléchargez directement vos reçus officiels scellés (R8).
+            </p>
+          </div>
+
+          <div className="px-4 py-2 bg-stone-50 rounded-[10px] border border-stone-200 text-right">
+            <span className="text-[11px] text-stone-500 font-mono uppercase block">Cycle actif</span>
+            <span className="font-heading font-bold text-stone-900 text-sm">{activeCycle?.libelle || 'Cycle 2026'}</span>
+          </div>
+        </div>
+
+        {/* Member Metrics */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="bg-[#272523] text-white rounded-[14px] p-6 border border-[#3b3835] shadow-sm">
+            <span className="text-xs font-mono font-medium text-stone-400 uppercase tracking-wider block">
+              Mon épargne cumulée
+            </span>
+            <p className="text-3xl font-extrabold font-heading text-[#e68a00] tracking-tight mt-2">
+              <Montant valeur={totalMemberCotisations} />
+            </p>
+            <p className="text-xs text-stone-400 mt-1">
+              Base de calcul du plafond de prêt R6 (3x)
+            </p>
+          </div>
+
+          <div className="bg-white rounded-[14px] p-6 border border-stone-200 shadow-xs">
+            <span className="text-xs font-mono font-medium text-stone-500 uppercase tracking-wider block">
+              Versements effectués
+            </span>
+            <p className="text-3xl font-bold font-heading text-stone-900 tracking-tight mt-2">
+              {memberCotisations.length} versement(s)
+            </p>
+            <p className="text-xs text-stone-500 mt-1">
+              Validés par le Trésorier
+            </p>
+          </div>
+
+          <div className="bg-white rounded-[14px] p-6 border border-stone-200 shadow-xs">
+            <span className="text-xs font-mono font-medium text-stone-500 uppercase tracking-wider block">
+              Reçus officiels émis (R8)
+            </span>
+            <p className="text-3xl font-bold font-heading text-emerald-700 tracking-tight mt-2">
+              {memberCotisations.length} reçu(s)
+            </p>
+            <p className="text-xs text-stone-500 mt-1">
+              100% scellés et immuables
+            </p>
+          </div>
+        </div>
+
+        {/* Member Cotisations List */}
+        <div className="bg-white rounded-[14px] border border-stone-200 p-6 shadow-xs">
+          <h3 className="text-base font-bold text-stone-900 font-heading mb-4">
+            Historique de mes versements
+          </h3>
+          {memberCotisations.length === 0 ? (
+            <EmptyState
+              title="Aucune cotisation trouvée"
+              description="Vos versements de cotisations apparaîtront ici dès que le Trésorier aura validé votre paiement lors d'une séance."
+            />
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead>
+                  <tr className="border-b border-stone-200 text-stone-500 font-mono uppercase text-[11px]">
+                    <th className="py-3 px-3">Date</th>
+                    <th className="py-3 px-3">Montant</th>
+                    <th className="py-3 px-3">Mode</th>
+                    <th className="py-3 px-3">Preuve R8</th>
+                    <th className="py-3 px-3 text-right">Reçu Officiel</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-stone-100">
+                  {memberCotisations.map((c) => (
+                    <tr key={c.id} className="hover:bg-stone-50/60 transition-colors">
+                      <td className="py-3 px-3 font-mono text-stone-700">{c.dateCotisation}</td>
+                      <td className="py-3 px-3 font-heading font-bold text-stone-900 text-sm">
+                        <Montant valeur={c.montant} />
+                      </td>
+                      <td className="py-3 px-3">
+                        <span className="px-2 py-0.5 rounded-[6px] bg-stone-100 text-stone-700 font-mono text-[11px]">
+                          {c.modePaiement}
+                        </span>
+                      </td>
+                      <td className="py-3 px-3">
+                        <span className="inline-flex items-center text-emerald-700 font-medium">
+                          <CheckCircle className="w-3.5 h-3.5 mr-1" />
+                          Scellé (REC-2026-{String(c.recuId || c.id).padStart(6, '0')})
+                        </span>
+                      </td>
+                      <td className="py-3 px-3 text-right">
+                        <button
+                          type="button"
+                          onClick={() => handleDownloadPdf(c.recuId || c.id)}
+                          className="touch-target inline-flex items-center px-3 py-1.5 rounded-[8px] bg-stone-100 hover:bg-stone-200 text-stone-800 font-heading font-semibold text-xs transition-colors"
+                        >
+                          <Download className="w-3.5 h-3.5 mr-1.5" />
+                          <span>PDF</span>
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       {/* 1. Bandeau fixe « Le Compteur » - Total en direct qui grimpe en réunion */}
@@ -194,7 +358,7 @@ export const CotisationsPage: React.FC = () => {
           </div>
           <div>
             <span className="text-xs font-mono uppercase tracking-wider text-stone-400 block">
-              Direction C « Le Compteur » · Total collecté
+              {canCollect ? 'Direction C « Le Compteur » · Total collecté' : 'Commissariat aux Comptes · Audit Cotisations (R8)'}
             </span>
             <div className="text-3xl font-extrabold font-heading text-[#e68a00] tracking-tight mt-0.5">
               <Montant valeur={sessionTotal} />
@@ -214,47 +378,54 @@ export const CotisationsPage: React.FC = () => {
         </div>
       </div>
 
-      {/* 2. Tabs Selector */}
-      <div className="flex items-center space-x-2 border-b border-stone-200 pb-2">
-        <button
-          type="button"
-          onClick={() => setActiveTab('compteur')}
-          className={`touch-target px-4 py-2 rounded-xl text-sm font-heading font-semibold transition-colors flex items-center space-x-2 ${
-            activeTab === 'compteur'
-              ? 'bg-[#272523] text-white shadow-xs'
-              : 'bg-white text-stone-600 hover:bg-stone-100 border border-stone-200'
-          }`}
-        >
-          <Sparkles className="w-4 h-4 text-[#e68a00]" />
-          <span>Saisie rapide (« Le Compteur »)</span>
-        </button>
+      {/* 2. Tabs Selector (only for roles with collection authority) */}
+      {canCollect ? (
+        <div className="flex items-center space-x-2 border-b border-stone-200 pb-2">
+          <button
+            type="button"
+            onClick={() => setActiveTab('compteur')}
+            className={`touch-target px-4 py-2 rounded-xl text-sm font-heading font-semibold transition-colors flex items-center space-x-2 ${
+              activeTab === 'compteur'
+                ? 'bg-[#272523] text-white shadow-xs'
+                : 'bg-white text-stone-600 hover:bg-stone-100 border border-stone-200'
+            }`}
+          >
+            <Sparkles className="w-4 h-4 text-[#e68a00]" />
+            <span>Saisie rapide (« Le Compteur »)</span>
+          </button>
 
-        <button
-          type="button"
-          onClick={() => setActiveTab('batch')}
-          className={`touch-target px-4 py-2 rounded-xl text-sm font-heading font-semibold transition-colors flex items-center space-x-2 ${
-            activeTab === 'batch'
-              ? 'bg-[#272523] text-white shadow-xs'
-              : 'bg-white text-stone-600 hover:bg-stone-100 border border-stone-200'
-          }`}
-        >
-          <Layers className="w-4 h-4 text-[#e68a00]" />
-          <span>Saisie par lot (Batch atomique)</span>
-        </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('batch')}
+            className={`touch-target px-4 py-2 rounded-xl text-sm font-heading font-semibold transition-colors flex items-center space-x-2 ${
+              activeTab === 'batch'
+                ? 'bg-[#272523] text-white shadow-xs'
+                : 'bg-white text-stone-600 hover:bg-stone-100 border border-stone-200'
+            }`}
+          >
+            <Layers className="w-4 h-4 text-[#e68a00]" />
+            <span>Saisie par lot (Batch atomique)</span>
+          </button>
 
-        <button
-          type="button"
-          onClick={() => setActiveTab('liste')}
-          className={`touch-target px-4 py-2 rounded-xl text-sm font-heading font-semibold transition-colors flex items-center space-x-2 ${
-            activeTab === 'liste'
-              ? 'bg-[#272523] text-white shadow-xs'
-              : 'bg-white text-stone-600 hover:bg-stone-100 border border-stone-200'
-          }`}
-        >
-          <Receipt className="w-4 h-4 text-[#e68a00]" />
-          <span>Historique & Reçus ({cotisations.length})</span>
-        </button>
-      </div>
+          <button
+            type="button"
+            onClick={() => setActiveTab('liste')}
+            className={`touch-target px-4 py-2 rounded-xl text-sm font-heading font-semibold transition-colors flex items-center space-x-2 ${
+              activeTab === 'liste'
+                ? 'bg-[#272523] text-white shadow-xs'
+                : 'bg-white text-stone-600 hover:bg-stone-100 border border-stone-200'
+            }`}
+          >
+            <Receipt className="w-4 h-4 text-[#e68a00]" />
+            <span>Historique & Reçus ({cotisations.length})</span>
+          </button>
+        </div>
+      ) : (
+        <div className="p-3 bg-stone-100 rounded-[10px] text-xs font-mono text-stone-600 flex items-center justify-between">
+          <span>Vue d'Audit & Registre des Reçus R8 · {cotisations.length} enregistrements scellés</span>
+          <span className="font-bold text-stone-800">Contrôle Commissariat</span>
+        </div>
+      )}
 
       {/* Global feedback / error alert */}
       {feedbackSuccess && (
@@ -657,19 +828,21 @@ export const CotisationsPage: React.FC = () => {
                             </button>
                           )}
 
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setEditingCotisation(cot);
-                              setEditMontant(cot.montant || 0);
-                              setEditModePaiement((cot.modePaiement as any) || 'ESPECES');
-                              setEditError(null);
-                            }}
-                            className="inline-flex items-center px-2.5 py-1 text-xs font-medium rounded-[6px] text-stone-700 bg-stone-100 hover:bg-stone-200 transition-colors"
-                            title="Modifier (PUT /api/cotisations/{id})"
-                          >
-                            Modifier
-                          </button>
+                          {canCollect && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setEditingCotisation(cot);
+                                setEditMontant(cot.montant || 0);
+                                setEditModePaiement((cot.modePaiement as any) || 'ESPECES');
+                                setEditError(null);
+                              }}
+                              className="inline-flex items-center px-2.5 py-1 text-xs font-medium rounded-[6px] text-stone-700 bg-stone-100 hover:bg-stone-200 transition-colors"
+                              title="Modifier (PUT /api/cotisations/{id})"
+                            >
+                              Modifier
+                            </button>
+                          )}
                         </td>
                       </tr>
                     );

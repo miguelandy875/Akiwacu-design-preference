@@ -28,20 +28,6 @@ interface NavItem {
   badge?: string;
 }
 
-const NAV_ITEMS: NavItem[] = [
-  { name: 'Tableau de bord', path: '/', icon: LayoutDashboard },
-  { name: 'Cotisations (Compteur)', path: '/cotisations', icon: Coins, badge: 'Phare' },
-  { name: 'Demandes & Prêts', path: '/prets', icon: FileSpreadsheet },
-  { name: 'Membres', path: '/membres', icon: Users, roles: ['ADMIN', 'GESTIONNAIRE'] },
-  { name: 'Adhésions', path: '/adhesions', icon: UserCheck, roles: ['ADMIN', 'GESTIONNAIRE'] },
-  { name: 'Cycles', path: '/cycles', icon: Calendar, roles: ['ADMIN', 'GESTIONNAIRE'] },
-  { name: 'Caisse & Solde', path: '/caisse', icon: Wallet, roles: ['ADMIN', 'TRESORIER', 'GESTIONNAIRE'] },
-  { name: 'Remboursements', path: '/remboursements', icon: FileCheck2, roles: ['ADMIN', 'TRESORIER'] },
-  { name: 'Tontines', path: '/tontines', icon: Landmark, roles: ['ADMIN'] },
-  { name: 'Utilisateurs & Rôles', path: '/utilisateurs', icon: ShieldCheck, roles: ['ADMIN', 'GESTIONNAIRE'] },
-  { name: 'Reçus & Audit R8', path: '/recus', icon: BookOpenCheck },
-];
-
 export const AppLayout: React.FC = () => {
   const { user, logout, switchPersona, hasRole } = useAuth();
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
@@ -53,6 +39,59 @@ export const AppLayout: React.FC = () => {
     logout();
     navigate('/login');
   };
+
+  const isAdminOrGestionnaire = hasRole(['ADMIN', 'GESTIONNAIRE']);
+  const isTresorierOnly = hasRole(['TRESORIER']) && !isAdminOrGestionnaire;
+  const isCommissaireOnly = hasRole(['COMMISSAIRE']) && !isAdminOrGestionnaire;
+  const isMembreOnly = !isAdminOrGestionnaire && !isTresorierOnly && !isCommissaireOnly;
+
+  // Strict RBAC: completely hide non-concerned features and tailor nav items per role
+  const authorizedNavItems: NavItem[] = React.useMemo(() => {
+    if (isMembreOnly) {
+      return [
+        { name: 'Mon Espace Adhérent', path: '/', icon: LayoutDashboard },
+        { name: 'Mon Carnet de Cotisations', path: '/cotisations', icon: Coins, badge: 'Personnel' },
+        { name: 'Mes Prêts & Échéancier', path: '/prets', icon: FileSpreadsheet },
+        { name: 'Mes Reçus Officiels (R8)', path: '/recus', icon: BookOpenCheck },
+      ];
+    }
+
+    if (isCommissaireOnly) {
+      return [
+        { name: 'Console d’Audit', path: '/', icon: LayoutDashboard },
+        { name: 'Scrutin & Votes Prêts (R4)', path: '/prets', icon: FileSpreadsheet, badge: 'Quorum' },
+        { name: 'Audit des Cotisations', path: '/cotisations', icon: Coins },
+        { name: 'Reçus Scellés & Audit R8', path: '/recus', icon: BookOpenCheck },
+      ];
+    }
+
+    if (isTresorierOnly) {
+      return [
+        { name: 'Cockpit Trésorerie', path: '/', icon: LayoutDashboard },
+        { name: 'Saisie Cotisations (Compteur)', path: '/cotisations', icon: Coins, badge: 'Phare' },
+        { name: 'Prêts & Déblocages Caisse', path: '/prets', icon: FileSpreadsheet },
+        { name: 'Grand Livre de Caisse', path: '/caisse', icon: Wallet },
+        { name: 'Journal des Remboursements', path: '/remboursements', icon: FileCheck2 },
+        { name: 'Reçus Officiels (R8)', path: '/recus', icon: BookOpenCheck },
+      ];
+    }
+
+    // Admin / Gestionnaire: full governance suite
+    const adminNav: NavItem[] = [
+      { name: 'Supervision & Gouvernance', path: '/', icon: LayoutDashboard },
+      { name: 'Cotisations (Compteur)', path: '/cotisations', icon: Coins, badge: 'Phare' },
+      { name: 'Demandes & Prêts', path: '/prets', icon: FileSpreadsheet },
+      { name: 'Membres', path: '/membres', icon: Users, roles: ['ADMIN', 'GESTIONNAIRE'] },
+      { name: 'Adhésions', path: '/adhesions', icon: UserCheck, roles: ['ADMIN', 'GESTIONNAIRE'] },
+      { name: 'Cycles', path: '/cycles', icon: Calendar, roles: ['ADMIN', 'GESTIONNAIRE'] },
+      { name: 'Caisse & Solde', path: '/caisse', icon: Wallet, roles: ['ADMIN', 'GESTIONNAIRE', 'TRESORIER'] },
+      { name: 'Remboursements', path: '/remboursements', icon: FileCheck2, roles: ['ADMIN', 'GESTIONNAIRE', 'TRESORIER'] },
+      { name: 'Tontines', path: '/tontines', icon: Landmark, roles: ['ADMIN'] },
+      { name: 'Utilisateurs & Rôles', path: '/utilisateurs', icon: ShieldCheck, roles: ['ADMIN', 'GESTIONNAIRE'] },
+      { name: 'Reçus & Audit R8', path: '/recus', icon: BookOpenCheck },
+    ];
+    return adminNav.filter((item) => !item.roles || hasRole(item.roles));
+  }, [isAdminOrGestionnaire, isTresorierOnly, isCommissaireOnly, isMembreOnly, hasRole]);
 
   const currentRoleString = user?.roles?.join(', ') || 'MEMBRE';
 
@@ -209,39 +248,29 @@ export const AppLayout: React.FC = () => {
             </div>
 
             <nav className="space-y-1 mt-1">
-              {NAV_ITEMS.map((item) => {
-                const isAuthorized = !item.roles || hasRole(item.roles);
-                return (
-                  <NavLink
-                    key={item.path}
-                    to={item.path}
-                    className={({ isActive }) =>
-                      `flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
-                        isActive
-                          ? 'bg-[#e68a00] text-white shadow-xs font-semibold'
-                          : isAuthorized
-                          ? 'text-stone-700 hover:bg-stone-100 hover:text-stone-900'
-                          : 'text-stone-400 hover:bg-stone-50 opacity-60'
-                      }`
-                    }
-                  >
-                    <div className="flex items-center space-x-3 min-w-0">
-                      <item.icon className="w-4 h-4 shrink-0" />
-                      <span className="truncate">{item.name}</span>
-                    </div>
-                    {item.badge && (
-                      <span className="text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded bg-amber-100 text-amber-900">
-                        {item.badge}
-                      </span>
-                    )}
-                    {!isAuthorized && (
-                      <span className="text-[10px] text-stone-400 font-mono" title="Permissions restreintes pour ce rôle">
-                        403
-                      </span>
-                    )}
-                  </NavLink>
-                );
-              })}
+              {authorizedNavItems.map((item) => (
+                <NavLink
+                  key={item.path}
+                  to={item.path}
+                  className={({ isActive }) =>
+                    `flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
+                      isActive
+                        ? 'bg-[#e68a00] text-white shadow-xs font-semibold'
+                        : 'text-stone-700 hover:bg-stone-100 hover:text-stone-900'
+                    }`
+                  }
+                >
+                  <div className="flex items-center space-x-3 min-w-0">
+                    <item.icon className="w-4 h-4 shrink-0" />
+                    <span className="truncate">{item.name}</span>
+                  </div>
+                  {item.badge && (
+                    <span className="text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded bg-amber-100 text-amber-900">
+                      {item.badge}
+                    </span>
+                  )}
+                </NavLink>
+              ))}
             </nav>
 
             <div className="mt-6 pt-4 border-t border-stone-100 px-3">
@@ -265,54 +294,23 @@ export const AppLayout: React.FC = () => {
 
       {/* 3. Mobile Bottom Navigation Bar (PWA friendly, touch targets >= 48px) */}
       <nav className="lg:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-stone-200 z-30 flex items-center justify-around px-2 py-1 shadow-lg">
-        <NavLink
-          to="/"
-          className={({ isActive }) =>
-            `flex flex-col items-center justify-center touch-target flex-1 py-1 text-xs font-medium ${
-              isActive ? 'text-[#e68a00] font-semibold' : 'text-stone-600'
-            }`
-          }
-        >
-          <LayoutDashboard className="w-5 h-5 mb-0.5" />
-          <span>Accueil</span>
-        </NavLink>
-
-        <NavLink
-          to="/cotisations"
-          className={({ isActive }) =>
-            `flex flex-col items-center justify-center touch-target flex-1 py-1 text-xs font-medium relative ${
-              isActive ? 'text-[#e68a00] font-semibold' : 'text-stone-600'
-            }`
-          }
-        >
-          <Coins className="w-5 h-5 mb-0.5" />
-          <span>Cotisations</span>
-          <span className="absolute top-1 right-3 w-2 h-2 rounded-full bg-[#e68a00]"></span>
-        </NavLink>
-
-        <NavLink
-          to="/prets"
-          className={({ isActive }) =>
-            `flex flex-col items-center justify-center touch-target flex-1 py-1 text-xs font-medium ${
-              isActive ? 'text-[#e68a00] font-semibold' : 'text-stone-600'
-            }`
-          }
-        >
-          <FileSpreadsheet className="w-5 h-5 mb-0.5" />
-          <span>Prêts</span>
-        </NavLink>
-
-        <NavLink
-          to="/caisse"
-          className={({ isActive }) =>
-            `flex flex-col items-center justify-center touch-target flex-1 py-1 text-xs font-medium ${
-              isActive ? 'text-[#e68a00] font-semibold' : 'text-stone-600'
-            }`
-          }
-        >
-          <Wallet className="w-5 h-5 mb-0.5" />
-          <span>Caisse</span>
-        </NavLink>
+        {authorizedNavItems.slice(0, 4).map((item) => (
+          <NavLink
+            key={item.path}
+            to={item.path}
+            className={({ isActive }) =>
+              `flex flex-col items-center justify-center touch-target flex-1 py-1 text-xs font-medium relative ${
+                isActive ? 'text-[#e68a00] font-semibold' : 'text-stone-600'
+              }`
+            }
+          >
+            <item.icon className="w-5 h-5 mb-0.5" />
+            <span className="truncate max-w-[75px] text-center leading-tight">
+              {item.name.includes('(') ? item.name.split('(')[0].trim() : item.name.split(' ').slice(0, 2).join(' ')}
+            </span>
+            {item.badge && <span className="absolute top-1 right-2 w-2 h-2 rounded-full bg-[#e68a00]"></span>}
+          </NavLink>
+        ))}
 
         <button
           type="button"
@@ -336,7 +334,7 @@ export const AppLayout: React.FC = () => {
             <div className="p-4 bg-[#272523] text-white flex items-center justify-between">
               <div>
                 <h3 className="font-heading font-bold text-base">AKIWACU</h3>
-                <p className="text-xs text-stone-400">Navigation complète (32 paths)</p>
+                <p className="text-xs text-stone-400">Navigation ({authorizedNavItems.length} rubriques)</p>
               </div>
               <button
                 type="button"
@@ -358,7 +356,7 @@ export const AppLayout: React.FC = () => {
             </div>
 
             <div className="flex-1 overflow-y-auto p-3 space-y-1">
-              {NAV_ITEMS.map((item) => (
+              {authorizedNavItems.map((item) => (
                 <NavLink
                   key={item.path}
                   to={item.path}

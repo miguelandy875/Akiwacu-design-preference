@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   FileCheck2,
   Plus,
@@ -8,7 +8,10 @@ import {
   Edit2,
   Calendar,
   AlertTriangle,
+  Receipt,
+  ShieldCheck,
 } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
 import {
   useRemboursementsQuery,
   useRemboursementQuery,
@@ -25,9 +28,48 @@ import { ErrorState } from '../components/ui-states/ErrorState';
 import { apiClient } from '../api/client';
 
 export const RemboursementsPage: React.FC = () => {
+  const { user, hasRole } = useAuth();
+
+  const isAdminOrGestionnaire = hasRole(['ADMIN', 'GESTIONNAIRE']);
+  const isTresorierOnly = hasRole(['TRESORIER']) && !isAdminOrGestionnaire;
+  const isCommissaireOnly = hasRole(['COMMISSAIRE']) && !isAdminOrGestionnaire;
+  const isMembreOnly = !isAdminOrGestionnaire && !isTresorierOnly && !isCommissaireOnly;
+
+  const canRecord = hasRole(['ADMIN', 'GESTIONNAIRE', 'TRESORIER']);
+  const canEditOrDelete = hasRole(['ADMIN', 'GESTIONNAIRE']);
+
   const { data: remboursements = [], isLoading, isError, error, refetch } = useRemboursementsQuery();
   const { data: prets = [] } = usePretsQuery();
   const { data: membres = [] } = useMembresQuery();
+
+  // Current member profile resolution
+  const currentMember = useMemo(() => {
+    if (!user) return membres[0];
+    return (
+      membres.find((m) => m.utilisateurId === user.utilisateurId) ||
+      membres.find(
+        (m) =>
+          m.nom.toLowerCase() === (user.nom || '').toLowerCase() &&
+          m.prenom.toLowerCase() === (user.prenom || '').toLowerCase()
+      ) ||
+      membres[0]
+    );
+  }, [membres, user]);
+
+  // Filtered remboursements
+  const displayedRemboursements = useMemo(() => {
+    if (isMembreOnly && currentMember) {
+      return remboursements.filter((r) => {
+        const pret = prets.find((p) => p.id === r.pretId);
+        return pret?.membreId === currentMember.id;
+      });
+    }
+    return remboursements;
+  }, [remboursements, isMembreOnly, currentMember, prets]);
+
+  const totalRembourse = useMemo(() => {
+    return displayedRemboursements.reduce((acc, r) => acc + (r.montant || 0), 0);
+  }, [displayedRemboursements]);
 
   const createMutation = useCreateRemboursementMutation();
   const updateMutation = useUpdateRemboursementMutation();
@@ -111,52 +153,99 @@ export const RemboursementsPage: React.FC = () => {
         <div>
           <div className="flex items-center space-x-2">
             <span className="text-xs uppercase font-mono font-bold tracking-wider px-2 py-0.5 rounded bg-emerald-100 text-emerald-900">
-              Remboursements & Reçus R8
+              {isMembreOnly
+                ? 'Mon Espace Remboursements'
+                : isCommissaireOnly
+                ? 'Audit & Conformité R8'
+                : 'Remboursements & Reçus R8'}
             </span>
             <span className="text-xs text-stone-400">·</span>
-            <span className="text-xs text-stone-600 font-medium">GET /api/remboursements</span>
+            <span className="text-xs text-stone-600 font-medium">
+              {isMembreOnly
+                ? `Membre ${currentMember?.prenom} ${currentMember?.nom} (${currentMember?.numeroMembre})`
+                : 'GET /api/remboursements'}
+            </span>
           </div>
           <h1 className="text-2xl font-extrabold text-stone-900 font-heading mt-2">
-            Remboursements de prêts
+            {isMembreOnly
+              ? 'Mes Remboursements & Reçus R8'
+              : isCommissaireOnly
+              ? 'Audit des Encaissements & Reçus Scellés'
+              : 'Remboursements de prêts'}
           </h1>
           <p className="text-sm text-stone-600 mt-1">
-            Enregistrement des versements de capital, génération de reçus officiels et clôture automatique du prêt.
+            {isMembreOnly
+              ? 'Consultez vos versements de capital, suivez le solde de vos crédits et téléchargez vos reçus officiels.'
+              : isCommissaireOnly
+              ? 'Contrôle collégial des écritures de caisse, traçabilité des versements et vérification des reçus numérotés.'
+              : 'Enregistrement des versements de capital, génération de reçus officiels et clôture automatique du prêt.'}
           </p>
         </div>
 
-        <button
-          type="button"
-          onClick={() => {
-            setShowCreateModal(true);
-            setFormError(null);
-          }}
-          className="touch-target inline-flex items-center px-4 py-2.5 rounded-xl bg-[#e68a00] hover:bg-[#cc7a00] text-white font-heading font-semibold text-sm shadow-xs transition-colors shrink-0"
-        >
-          <Plus className="w-4 h-4 mr-2" />
-          <span>Enregistrer Versement</span>
-        </button>
+        {canRecord && (
+          <button
+            type="button"
+            onClick={() => {
+              setShowCreateModal(true);
+              setFormError(null);
+            }}
+            className="touch-target inline-flex items-center px-4 py-2.5 rounded-xl bg-[#e68a00] hover:bg-[#cc7a00] text-white font-heading font-semibold text-sm shadow-xs transition-colors shrink-0"
+          >
+            <Plus className="w-4 h-4 mr-2" />
+            <span>Enregistrer Versement</span>
+          </button>
+        )}
       </div>
+
+      {/* Member metrics banner */}
+      {isMembreOnly && (
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="bg-[#272523] text-white rounded-xl p-4 border border-[#3b3835]">
+            <span className="text-xs font-mono uppercase text-stone-400">Total remboursé à ce jour</span>
+            <p className="text-2xl font-extrabold font-heading text-emerald-400 mt-1">
+              <Montant valeur={totalRembourse} />
+            </p>
+            <p className="text-[11px] text-stone-400 mt-0.5">Versements comptabilisés en caisse</p>
+          </div>
+
+          <div className="bg-white rounded-xl p-4 border border-stone-200 shadow-xs">
+            <span className="text-xs font-mono uppercase text-stone-500">Versements enregistrés</span>
+            <p className="text-2xl font-bold font-heading text-stone-900 mt-1">
+              {displayedRemboursements.length} versement(s)
+            </p>
+            <p className="text-[11px] text-stone-500 mt-0.5">Historique certifié par le Trésorier</p>
+          </div>
+
+          <div className="bg-white rounded-xl p-4 border border-stone-200 shadow-xs">
+            <span className="text-xs font-mono uppercase text-stone-500">Reçus certifiés R8</span>
+            <p className="text-2xl font-bold font-heading text-purple-700 mt-1">
+              {displayedRemboursements.filter((r) => r.verrouille).length} reçu(s) scellé(s)
+            </p>
+            <p className="text-[11px] text-stone-500 mt-0.5">Téléchargeables en PDF officiel</p>
+          </div>
+        </div>
+      )}
 
       {isLoading && <LoadingSkeleton rows={5} type="table" />}
       {isError && <ErrorState error={error} onRetry={() => refetch()} />}
 
-      {!isLoading && remboursements.length === 0 && (
+      {!isLoading && displayedRemboursements.length === 0 && (
         <EmptyState
-          title="Aucun remboursement enregistré"
-          description="Enregistrez les versements des emprunteurs pour mettre à jour l'échéancier et réinjecter les fonds en caisse."
-          actionLabel="Enregistrer un remboursement"
-          onAction={() => setShowCreateModal(true)}
+          title={isMembreOnly ? "Aucun versement enregistré" : "Aucun remboursement enregistré"}
+          description={isMembreOnly ? "Vous n'avez aucun versement de remboursement enregistré sur vos prêts en cours." : "Enregistrez les versements des emprunteurs pour mettre à jour l'échéancier et réinjecter les fonds en caisse."}
+          actionLabel={canRecord ? "Enregistrer un remboursement" : undefined}
+          onAction={canRecord ? () => setShowCreateModal(true) : undefined}
         />
       )}
 
-      {!isLoading && remboursements.length > 0 && (
+      {!isLoading && displayedRemboursements.length > 0 && (
         <div className="bg-white rounded-2xl border border-stone-200 overflow-hidden shadow-xs">
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-stone-200 text-sm">
               <thead className="bg-stone-50 text-stone-500 font-heading text-xs font-semibold uppercase tracking-wider">
                 <tr>
                   <th className="py-3.5 px-4 text-left">Date</th>
-                  <th className="py-3.5 px-4 text-left">Prêt & Emprunteur</th>
+                  <th className="py-3.5 px-4 text-left">{isMembreOnly ? 'Prêt concerné' : 'Prêt & Emprunteur'}</th>
                   <th className="py-3.5 px-4 text-left">Mode</th>
                   <th className="py-3.5 px-4 text-right">Montant</th>
                   <th className="py-3.5 px-4 text-center">Reçu R8</th>
@@ -164,7 +253,7 @@ export const RemboursementsPage: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-stone-100 font-sans">
-                {remboursements.map((r) => {
+                {displayedRemboursements.map((r) => {
                   const pret = prets.find((p) => p.id === r.pretId);
                   const membre = membres.find((m) => m.id === pret?.membreId);
 
@@ -175,7 +264,7 @@ export const RemboursementsPage: React.FC = () => {
                       </td>
                       <td className="py-3.5 px-4">
                         <p className="font-bold text-stone-900 font-heading">
-                          {membre ? `${membre.prenom} ${membre.nom}` : `Prêt #${r.pretId}`}
+                          {isMembreOnly ? `Prêt N°${r.pretId}` : (membre ? `${membre.prenom} ${membre.nom}` : `Prêt #${r.pretId}`)}
                         </p>
                         <span className="text-xs text-stone-500 font-mono">Dossier Prêt #{r.pretId}</span>
                       </td>
@@ -216,27 +305,31 @@ export const RemboursementsPage: React.FC = () => {
                             PDF
                           </button>
                         )}
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setEditingRemboursement(r);
-                            setMontant(r.montant || 0);
-                            setDateRemboursement(r.dateRemboursement || '');
-                            setFormError(null);
-                          }}
-                          className="p-1 text-stone-500 hover:text-[#e68a00]"
-                          title="Modifier"
-                        >
-                          <Edit2 className="w-4 h-4" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleDelete(r.id!)}
-                          className="p-1 text-stone-500 hover:text-rose-600"
-                          title="Supprimer"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+                        {canEditOrDelete && !r.verrouille && (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setEditingRemboursement(r);
+                                setMontant(r.montant || 0);
+                                setDateRemboursement(r.dateRemboursement || '');
+                                setFormError(null);
+                              }}
+                              className="p-1 text-stone-500 hover:text-[#e68a00]"
+                              title="Modifier"
+                            >
+                              <Edit2 className="w-4 h-4" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDelete(r.id!)}
+                              className="p-1 text-stone-500 hover:text-rose-600"
+                              title="Supprimer"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </>
+                        )}
                       </td>
                     </tr>
                   );

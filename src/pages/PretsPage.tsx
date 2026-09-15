@@ -30,6 +30,7 @@ import {
   useRemboursementsParPretQuery,
   useMembresQuery,
   useCyclesQuery,
+  useCotisationsQuery,
 } from '../api/queries';
 import { Montant } from '../components/Montant';
 import { StatusBadge } from '../components/ui-states/StatusBadge';
@@ -43,13 +44,62 @@ export const PretsPage: React.FC = () => {
   const { user, hasRole } = useAuth();
   const [statutFilter, setStatutFilter] = useState<'SOUMISE' | 'APPROUVEE' | 'REJETEE' | 'DEBLOQUEE' | undefined>(undefined);
 
+  // RBAC roles
+  const isAdminOrGestionnaire = hasRole(['ADMIN', 'GESTIONNAIRE']);
+  const isTresorierOnly = hasRole(['TRESORIER']) && !isAdminOrGestionnaire;
+  const isCommissaireOnly = hasRole(['COMMISSAIRE']) && !isAdminOrGestionnaire;
+  const isMembreOnly = !isAdminOrGestionnaire && !isTresorierOnly && !isCommissaireOnly;
+
+  const canVote = hasRole(['COMMISSAIRE', 'ADMIN']);
+  const canDebloquer = hasRole(['TRESORIER', 'ADMIN', 'GESTIONNAIRE']);
+
   // Queries
   const { data: demandes = [], isLoading: loadingDemandes, error: errorDemandes, refetch: refetchDemandes } = useDemandesPretQuery(statutFilter);
   const { data: prets = [], isLoading: loadingPrets, refetch: refetchPrets } = usePretsQuery();
   const { data: membres = [] } = useMembresQuery();
   const { data: cycles = [] } = useCyclesQuery();
+  const { data: cotisations = [] } = useCotisationsQuery();
 
   const activeCycle = useMemo(() => cycles.find((c) => c.statut === 'OUVERT') || cycles[0], [cycles]);
+
+  // Resolve current member profile
+  const currentMember = useMemo(() => {
+    if (!user) return membres[0];
+    return (
+      membres.find((m) => m.utilisateurId === user.utilisateurId) ||
+      membres.find(
+        (m) =>
+          m.nom.toLowerCase() === (user.nom || '').toLowerCase() &&
+          m.prenom.toLowerCase() === (user.prenom || '').toLowerCase()
+      ) ||
+      membres[0]
+    );
+  }, [membres, user]);
+
+  // R6 Borrowing Ceiling: 3x total cotisations of the member
+  const totalMemberCotisations = useMemo(() => {
+    if (!currentMember) return 0;
+    return cotisations
+      .filter((c) => c.membreId === currentMember.id)
+      .reduce((sum, c) => sum + (c.montant || 0), 0);
+  }, [cotisations, currentMember]);
+
+  const memberPlafondR6 = totalMemberCotisations * 3;
+
+  // Filtered lists for the active role
+  const displayedDemandes = useMemo(() => {
+    if (isMembreOnly && currentMember) {
+      return demandes.filter((d) => d.membreId === currentMember.id);
+    }
+    return demandes;
+  }, [demandes, isMembreOnly, currentMember]);
+
+  const displayedPrets = useMemo(() => {
+    if (isMembreOnly && currentMember) {
+      return prets.filter((p) => p.membreId === currentMember.id);
+    }
+    return prets;
+  }, [prets, isMembreOnly, currentMember]);
 
   // Mutations
   const createDemandeMutation = useCreateDemandePretMutation();
@@ -151,33 +201,85 @@ export const PretsPage: React.FC = () => {
         <div>
           <div className="flex items-center space-x-2">
             <span className="text-xs uppercase font-mono font-bold tracking-wider px-2 py-0.5 rounded bg-purple-100 text-purple-900">
-              Prêts & Échéanciers
+              {isMembreOnly
+                ? 'Mon Espace Crédit'
+                : isCommissaireOnly
+                ? 'Chambre de Vote Collégiale'
+                : isTresorierOnly
+                ? 'Décaissements & Trésorerie'
+                : 'Prêts & Échéanciers'}
             </span>
             <span className="text-xs text-stone-400">·</span>
             <span className="text-xs text-stone-600 font-medium">
-              Règles R2, R3, R4, R6, R7 & R8
+              {isMembreOnly
+                ? `Membre ${currentMember?.prenom} ${currentMember?.nom} (${currentMember?.numeroMembre})`
+                : 'Règles R2, R3, R4, R6, R7 & R8'}
             </span>
           </div>
           <h1 className="text-2xl font-extrabold text-stone-900 font-heading mt-2">
-            Demandes de prêt & Crédits accordés
+            {isMembreOnly
+              ? 'Mes Demandes de Prêt & Mon Échéancier'
+              : isCommissaireOnly
+              ? 'Examen Collégial des Prêts & Décisions de Vote'
+              : isTresorierOnly
+              ? 'Décaissement des Prêts & Suivi des Crédits'
+              : 'Demandes de prêt & Crédits accordés'}
           </h1>
           <p className="text-sm text-stone-600 mt-1">
-            Examen collégial des dossiers, vote des commissaires et déblocage de fonds.
+            {isMembreOnly
+              ? 'Suivez vos demandes de crédit, le quorum des commissaires et le calendrier de vos remboursements.'
+              : isCommissaireOnly
+              ? 'Vérification des critères prudentiels (R2, R3, R4, R6, R7) et vote décisionnel des commissaires.'
+              : isTresorierOnly
+              ? 'Déblocage des fonds approuvés par le collège des commissaires (R4) et suivi des échéanciers.'
+              : 'Examen collégial des dossiers, vote des commissaires et déblocage de fonds.'}
           </p>
         </div>
 
         <button
           type="button"
           onClick={() => {
+            if (isMembreOnly && currentMember) {
+              setFormMembreId(currentMember.id!);
+            }
             setShowCreateModal(true);
             setDemandeError(null);
           }}
           className="touch-target inline-flex items-center px-4 py-2.5 rounded-xl bg-[#e68a00] hover:bg-[#cc7a00] text-white font-heading font-semibold text-sm shadow-xs transition-colors shrink-0"
         >
           <Plus className="w-4 h-4 mr-2" />
-          <span>Nouvelle Demande</span>
+          <span>{isMembreOnly ? 'Demander un prêt' : 'Nouvelle Demande'}</span>
         </button>
       </div>
+
+      {/* 1.1 Member-specific metrics banner (R6 Ceiling) */}
+      {isMembreOnly && (
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="bg-[#272523] text-white rounded-xl p-4 border border-[#3b3835]">
+            <span className="text-xs font-mono uppercase text-stone-400">Plafond d'emprunt (R6)</span>
+            <p className="text-2xl font-extrabold font-heading text-[#e68a00] mt-1">
+              <Montant valeur={memberPlafondR6} />
+            </p>
+            <p className="text-[11px] text-stone-400 mt-0.5">3x votre épargne de <Montant valeur={totalMemberCotisations} /></p>
+          </div>
+
+          <div className="bg-white rounded-xl p-4 border border-stone-200 shadow-xs">
+            <span className="text-xs font-mono uppercase text-stone-500">Mes dossiers en cours</span>
+            <p className="text-2xl font-bold font-heading text-stone-900 mt-1">
+              {displayedDemandes.length} dossier(s)
+            </p>
+            <p className="text-[11px] text-stone-500 mt-0.5">Cycle actif : {activeCycle?.libelle || '2026'}</p>
+          </div>
+
+          <div className="bg-white rounded-xl p-4 border border-stone-200 shadow-xs">
+            <span className="text-xs font-mono uppercase text-stone-500">Mes crédits débloqués</span>
+            <p className="text-2xl font-bold font-heading text-emerald-700 mt-1">
+              {displayedPrets.length} crédit(s) actif(s)
+            </p>
+            <p className="text-[11px] text-stone-500 mt-0.5">Taux statutaire garanti : 5%</p>
+          </div>
+        </div>
+      )}
 
       {/* 2. Status filter tabs (GET /api/demandes-pret?statut=...) */}
       <div className="flex items-center space-x-2 overflow-x-auto pb-2">
@@ -190,7 +292,7 @@ export const PretsPage: React.FC = () => {
               : 'bg-white text-stone-600 hover:bg-stone-100 border border-stone-200'
           }`}
         >
-          Toutes ({demandes.length})
+          {isMembreOnly ? `Tous mes dossiers (${displayedDemandes.length})` : `Toutes (${displayedDemandes.length})`}
         </button>
 
         {(['SOUMISE', 'APPROUVEE', 'DEBLOQUEE', 'REJETEE'] as const).map((st) => (
@@ -216,7 +318,7 @@ export const PretsPage: React.FC = () => {
           <div className="bg-white rounded-2xl border border-stone-200 p-5 shadow-xs">
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-heading font-bold text-base text-stone-900">
-                Dossiers de demande ({demandes.length})
+                {isMembreOnly ? 'Mes dossiers de demande' : 'Dossiers de demande'} ({displayedDemandes.length})
               </h3>
               <span className="text-xs text-stone-500 font-mono">
                 GET /api/demandes-pret
@@ -226,17 +328,20 @@ export const PretsPage: React.FC = () => {
             {loadingDemandes && <LoadingSkeleton rows={4} />}
             {errorDemandes && <ErrorState error={errorDemandes} onRetry={() => refetchDemandes()} />}
 
-            {!loadingDemandes && demandes.length === 0 && (
+            {!loadingDemandes && displayedDemandes.length === 0 && (
               <EmptyState
-                title="Aucune demande de prêt"
-                description="Aucun dossier ne correspond au filtre sélectionné. Les membres peuvent soumettre une demande sur le cycle actif."
+                title={isMembreOnly ? "Aucune demande de prêt personnelle" : "Aucune demande de prêt"}
+                description={isMembreOnly ? "Vous n'avez pas de demande de prêt en cours pour le moment." : "Aucun dossier ne correspond au filtre sélectionné. Les membres peuvent soumettre une demande sur le cycle actif."}
                 actionLabel="Déposer une demande"
-                onAction={() => setShowCreateModal(true)}
+                onAction={() => {
+                  if (isMembreOnly && currentMember) setFormMembreId(currentMember.id!);
+                  setShowCreateModal(true);
+                }}
               />
             )}
 
             <div className="space-y-3">
-              {demandes.map((d) => {
+              {displayedDemandes.map((d) => {
                 const membre = membres.find((m) => m.id === d.membreId);
                 const isSelected = selectedDemandeId === d.id;
 
@@ -293,7 +398,7 @@ export const PretsPage: React.FC = () => {
               <div className="flex items-center space-x-2">
                 <FileSpreadsheet className="w-5 h-5 text-[#e68a00]" />
                 <h3 className="font-heading font-bold text-base text-stone-900">
-                  Prêts débloqués & Échéanciers ({prets.length})
+                  {isMembreOnly ? 'Mes crédits débloqués & Échéanciers' : 'Prêts débloqués & Échéanciers'} ({displayedPrets.length})
                 </h3>
               </div>
               <span className="text-xs text-stone-500 font-mono">GET /api/prets</span>
@@ -301,8 +406,14 @@ export const PretsPage: React.FC = () => {
 
             {loadingPrets && <LoadingSkeleton rows={3} />}
 
+            {!loadingPrets && displayedPrets.length === 0 && (
+              <p className="text-xs text-stone-500 italic p-4 text-center">
+                {isMembreOnly ? "Vous n'avez aucun prêt débloqué en cours." : "Aucun prêt débloqué actif pour le moment."}
+              </p>
+            )}
+
             <div className="space-y-3">
-              {prets.map((p) => {
+              {displayedPrets.map((p) => {
                 const membre = membres.find((m) => m.id === p.membreId);
                 const isSelected = selectedPretId === p.id;
                 return (
@@ -449,7 +560,7 @@ export const PretsPage: React.FC = () => {
               </div>
 
               {/* Vote Actions (POST /api/demandes-pret/{id}/votes) - Commissaire / Admin only */}
-              {selectedDemande.statut === 'SOUMISE' && (
+              {selectedDemande.statut === 'SOUMISE' && canVote && (
                 <div className="pt-4 border-t border-stone-200">
                   <h4 className="text-xs font-bold text-stone-900 uppercase tracking-wider font-heading mb-2 flex items-center">
                     <VoteIcon className="w-4 h-4 mr-1.5 text-[#e68a00]" />
@@ -492,8 +603,17 @@ export const PretsPage: React.FC = () => {
                 </div>
               )}
 
-              {/* Déblocage Action (POST /api/prets) - If APPROUVEE */}
-              {selectedDemande.statut === 'APPROUVEE' && (
+              {/* Informative message for members or non-voting roles during SOUMISE */}
+              {selectedDemande.statut === 'SOUMISE' && !canVote && (
+                <div className="pt-4 border-t border-stone-200">
+                  <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900">
+                    <span className="font-bold">Scrutin collégial en cours :</span> Le dossier est actuellement soumis aux commissaires aux comptes. Vous serez notifié dès la clôture des votes.
+                  </div>
+                </div>
+              )}
+
+              {/* Déblocage Action (POST /api/prets) - If APPROUVEE - Tresorier / Admin only */}
+              {selectedDemande.statut === 'APPROUVEE' && canDebloquer && (
                 <div className="pt-4 border-t border-stone-200">
                   <div className="p-3 bg-purple-50 border border-purple-200 rounded-xl mb-3 text-xs text-purple-900">
                     <span className="font-bold">Demande prête au déblocage :</span> Le quorum R4 est atteint. Le Trésorier ou Gestionnaire peut débloquer les fonds (R3 & R7 vérifiées).
@@ -512,6 +632,15 @@ export const PretsPage: React.FC = () => {
                     <CreditCard className="w-4 h-4 mr-2 text-[#e68a00]" />
                     <span>Débloquer le prêt (POST /api/prets)</span>
                   </button>
+                </div>
+              )}
+
+              {/* Informative message for non-treasurers when APPROUVEE */}
+              {selectedDemande.statut === 'APPROUVEE' && !canDebloquer && (
+                <div className="pt-4 border-t border-stone-200">
+                  <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-900">
+                    <span className="font-bold">Demande approuvée :</span> Le quorum a été validé avec succès. Les fonds sont en attente de décaissement par la trésorerie.
+                  </div>
                 </div>
               )}
             </div>
@@ -636,17 +765,29 @@ export const PretsPage: React.FC = () => {
                 <label className="block text-xs font-bold text-stone-700 uppercase font-heading mb-1">
                   Membre demandeur
                 </label>
-                <select
-                  value={formMembreId}
-                  onChange={(e) => setFormMembreId(Number(e.target.value))}
-                  className="w-full py-2.5 px-3 rounded-xl border border-stone-300 text-sm"
-                >
-                  {membres.map((m) => (
-                    <option key={m.id} value={m.id}>
-                      {m.prenom} {m.nom} ({m.numeroMembre || 'Sans N°'})
-                    </option>
-                  ))}
-                </select>
+                {isMembreOnly && currentMember ? (
+                  <div className="p-3 bg-stone-50 rounded-xl border border-stone-200">
+                    <p className="text-sm font-bold font-heading text-stone-900">
+                      {currentMember.prenom} {currentMember.nom} ({currentMember.numeroMembre || 'Sans N°'})
+                    </p>
+                    <div className="mt-2 text-xs text-amber-900 bg-amber-50 p-2 rounded-lg border border-amber-200">
+                      <span className="font-semibold">Capacité d'emprunt R6 : </span>
+                      <Montant valeur={memberPlafondR6} /> (3x votre épargne de <Montant valeur={totalMemberCotisations} />)
+                    </div>
+                  </div>
+                ) : (
+                  <select
+                    value={formMembreId}
+                    onChange={(e) => setFormMembreId(Number(e.target.value))}
+                    className="w-full py-2.5 px-3 rounded-xl border border-stone-300 text-sm"
+                  >
+                    {membres.map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.prenom} {m.nom} ({m.numeroMembre || 'Sans N°'})
+                      </option>
+                    ))}
+                  </select>
+                )}
               </div>
 
               <div className="grid grid-cols-2 gap-3">
