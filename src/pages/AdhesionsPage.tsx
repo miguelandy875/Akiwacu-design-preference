@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import {
   useAdhesionsQuery,
+  useAdhesionQuery,
   useCreateAdhesionMutation,
   useUpdateAdhesionMutation,
   useMembresQuery,
@@ -29,6 +30,9 @@ export const AdhesionsPage: React.FC = () => {
 
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [editingAdhesion, setEditingAdhesion] = useState<any | null>(null);
+  const [inspectAdhesionId, setInspectAdhesionId] = useState<number | null>(null);
+
+  const { data: inspectedAdhesion, isLoading: loadingInspected } = useAdhesionQuery(inspectAdhesionId || 0);
 
   // Form states
   const [selectedMembreId, setSelectedMembreId] = useState<number>(membres[0]?.id || 1);
@@ -149,7 +153,14 @@ export const AdhesionsPage: React.FC = () => {
                       <td className="py-3.5 px-4 text-center">
                         <StatusBadge status={adh.statut} />
                       </td>
-                      <td className="py-3.5 px-4 text-right">
+                      <td className="py-3.5 px-4 text-right space-x-2">
+                        <button
+                          type="button"
+                          onClick={() => setInspectAdhesionId(adh.id!)}
+                          className="inline-flex items-center px-2.5 py-1 text-xs font-medium rounded-[6px] text-stone-700 bg-stone-100 hover:bg-stone-200"
+                        >
+                          Consulter
+                        </button>
                         <button
                           type="button"
                           onClick={() => {
@@ -157,7 +168,7 @@ export const AdhesionsPage: React.FC = () => {
                             setEditStatut(adh.statut as any);
                             setFormError(null);
                           }}
-                          className="inline-flex items-center px-3 py-1 text-xs font-medium rounded-lg text-stone-700 bg-stone-100 hover:bg-stone-200"
+                          className="inline-flex items-center px-2.5 py-1 text-xs font-medium rounded-[6px] text-stone-700 bg-stone-100 hover:bg-stone-200"
                         >
                           Modifier statut
                         </button>
@@ -310,6 +321,64 @@ export const AdhesionsPage: React.FC = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* INSPECT MODAL (GET /api/adhesions/{id}) */}
+      {inspectAdhesionId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs">
+          <div className="bg-white rounded-[14px] max-w-md w-full p-6 shadow-2xl border border-stone-200 animate-in fade-in zoom-in-95">
+            <div className="flex items-center justify-between pb-3 border-b border-stone-100 mb-4">
+              <div>
+                <span className="text-xs font-mono text-[#e68a00] font-bold">GET /api/adhesions/{inspectAdhesionId}</span>
+                <h3 className="font-heading font-bold text-lg text-stone-900">
+                  Détail de l'adhésion #{inspectAdhesionId}
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setInspectAdhesionId(null)}
+                className="text-stone-400 hover:text-stone-600 text-sm font-bold"
+              >
+                ✕
+              </button>
+            </div>
+
+            {loadingInspected && <LoadingSkeleton rows={3} />}
+
+            {inspectedAdhesion && (
+              <div className="space-y-4">
+                <div className="p-4 bg-stone-50 rounded-[10px] border border-stone-200 space-y-2.5 text-xs">
+                  <div className="flex justify-between">
+                    <span className="text-stone-500">Membre ID :</span>
+                    <span className="font-mono font-bold text-stone-900">#{inspectedAdhesion.membreId}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-stone-500">Cycle ID :</span>
+                    <span className="font-mono font-bold text-stone-900">#{inspectedAdhesion.cycleId}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-stone-500">Date d'inscription :</span>
+                    <span className="font-mono text-stone-800">{inspectedAdhesion.dateAdhesion}</span>
+                  </div>
+                  <div className="flex justify-between items-center pt-2 border-t border-stone-200">
+                    <span className="text-stone-500">Statut :</span>
+                    <StatusBadge status={inspectedAdhesion.statut} />
+                  </div>
+                </div>
+
+                <div className="flex justify-end">
+                  <button
+                    type="button"
+                    onClick={() => setInspectAdhesionId(null)}
+                    className="touch-target px-4 py-2 rounded-[6px] bg-stone-900 text-white text-xs font-heading font-semibold"
+                  >
+                    Fermer
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

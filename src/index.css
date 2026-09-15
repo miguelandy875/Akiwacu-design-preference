@@ -4,40 +4,53 @@
   :root {
     --font-heading: 'Space Grotesk', sans-serif;
     --font-body: 'IBM Plex Sans', sans-serif;
-    
-    /* D-34 Tokens Direction C « Le Compteur » */
-    --bandeau-dark: #272523;
-    --bandeau-dark-text: #f7f6f4;
-    --accent-amber: #e68a00;
-    --accent-amber-light: #fef3c7;
-    --accent-amber-hover: #cc7a00;
-    
-    --bg-page: #fbfaf8;
-    --surface-card: #ffffff;
-    --border-subtle: #e7e5e4;
-    --border-strong: #d6d3d1;
-    --text-primary: #1c1917;
-    --text-secondary: #57534e;
-    --text-muted: #78716c;
-    
-    --status-active-bg: #ecfdf5;
-    --status-active-text: #047857;
-    --status-warning-bg: #fffbeb;
-    --status-warning-text: #b45309;
-    --status-danger-bg: #fef2f2;
-    --status-danger-text: #b91c1c;
-    --status-neutral-bg: #f5f5f4;
-    --status-neutral-text: #57534e;
+
+    /* Tokens officiels DESIGN-TOKENS.md */
+    --background: oklch(0.97 0.005 90);
+    --foreground: oklch(0.2 0.01 90);
+    --card: oklch(0.995 0.002 90);
+    --card-foreground: oklch(0.2 0.01 90);
+    --primary: oklch(0.75 0.15 85);
+    --primary-foreground: oklch(0.2 0.02 70);
+    --secondary: oklch(0.2 0.015 70);
+    --secondary-foreground: oklch(0.96 0.01 80);
+    --muted: oklch(0.93 0.005 90);
+    --muted-foreground: oklch(0.5 0.01 90);
+    --destructive: oklch(0.55 0.14 30);
+    --destructive-foreground: oklch(0.98 0.01 70);
+    --border: oklch(0.88 0.005 90);
+    --input: oklch(0.88 0.005 90);
+    --ring: oklch(0.75 0.15 85);
+    --radius: 0.625rem;
+
+    /* Direction C « Le Compteur » Aliases */
+    --bandeau-dark: var(--secondary);
+    --bandeau-dark-text: var(--secondary-foreground);
+    --accent-amber: var(--primary);
+    --accent-amber-light: oklch(0.95 0.05 85);
+    --accent-amber-hover: oklch(0.70 0.16 85);
+
+    --radius-sm: 6px;
+    --radius-md: 10px;
+    --radius-lg: 14px;
   }
 
   body {
     font-family: var(--font-body);
-    background-color: var(--bg-page);
-    color: var(--text-primary);
+    background-color: var(--background);
+    color: var(--foreground);
     -webkit-tap-highlight-color: transparent;
   }
 
   h1, h2, h3, h4, h5, h6, .font-heading {
+    font-family: var(--font-heading);
+  }
+
+  button, input, select, textarea {
+    font-family: var(--font-body);
+  }
+
+  button.font-heading, .btn-heading {
     font-family: var(--font-heading);
   }
 
@@ -62,6 +75,7 @@
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #d6d3d1;
+  background: var(--border);
   border-radius: 9999px;
 }
+

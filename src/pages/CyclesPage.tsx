@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import {
   useCyclesQuery,
+  useCycleQuery,
   useCreateCycleMutation,
   useUpdateCycleMutation,
   usePatchCycleStatutMutation,
@@ -30,6 +31,9 @@ export const CyclesPage: React.FC = () => {
 
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [editingCycle, setEditingCycle] = useState<any | null>(null);
+  const [inspectCycleId, setInspectCycleId] = useState<number | null>(null);
+
+  const { data: inspectedCycle, isLoading: loadingInspected } = useCycleQuery(inspectCycleId || 0);
 
   // Form states
   const [libelle, setLibelle] = useState('');
@@ -243,6 +247,14 @@ export const CyclesPage: React.FC = () => {
 
                   <button
                     type="button"
+                    onClick={() => setInspectCycleId(cycle.id!)}
+                    className="touch-target px-2.5 py-1.5 rounded-[6px] border border-stone-200 text-stone-700 bg-white hover:bg-stone-50 text-xs font-semibold"
+                  >
+                    Consulter
+                  </button>
+
+                  <button
+                    type="button"
                     onClick={() => {
                       setEditingCycle(cycle);
                       setLibelle(cycle.libelle);
@@ -252,7 +264,7 @@ export const CyclesPage: React.FC = () => {
                       setPeriodicite(cycle.periodicite as any);
                       setFormError(null);
                     }}
-                    className="touch-target p-2 rounded-lg border border-stone-200 text-stone-600 hover:bg-stone-50 text-xs"
+                    className="touch-target p-2 rounded-[6px] border border-stone-200 text-stone-600 hover:bg-stone-50 text-xs"
                     title="Modifier les paramètres (PUT /api/cycles/{id})"
                   >
                     <Edit2 className="w-3.5 h-3.5" />
@@ -454,6 +466,68 @@ export const CyclesPage: React.FC = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* INSPECT MODAL (GET /api/cycles/{id}) */}
+      {inspectCycleId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs">
+          <div className="bg-white rounded-[14px] max-w-md w-full p-6 shadow-2xl border border-stone-200 animate-in fade-in zoom-in-95">
+            <div className="flex items-center justify-between pb-3 border-b border-stone-100 mb-4">
+              <div>
+                <span className="text-xs font-mono text-[#e68a00] font-bold">GET /api/cycles/{inspectCycleId}</span>
+                <h3 className="font-heading font-bold text-lg text-stone-900">
+                  Détail du cycle #{inspectCycleId}
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setInspectCycleId(null)}
+                className="text-stone-400 hover:text-stone-600 text-sm font-bold"
+              >
+                ✕
+              </button>
+            </div>
+
+            {loadingInspected && <LoadingSkeleton rows={3} />}
+
+            {inspectedCycle && (
+              <div className="space-y-4">
+                <div className="p-4 bg-stone-50 rounded-[10px] border border-stone-200 space-y-2.5 text-xs">
+                  <div className="flex justify-between">
+                    <span className="text-stone-500">Libellé :</span>
+                    <span className="font-bold text-stone-900">{inspectedCycle.libelle}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-stone-500">Période :</span>
+                    <span className="font-mono text-stone-800">{inspectedCycle.dateDebut} → {inspectedCycle.dateFin}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-stone-500">Cotisation exigée :</span>
+                    <span className="font-bold font-heading text-stone-900"><Montant valeur={inspectedCycle.montantCotisation} /></span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-stone-500">Périodicité :</span>
+                    <span className="font-semibold text-stone-800">{inspectedCycle.periodicite}</span>
+                  </div>
+                  <div className="flex justify-between items-center pt-2 border-t border-stone-200">
+                    <span className="text-stone-500">Statut (R2/R3) :</span>
+                    <StatusBadge status={inspectedCycle.statut} />
+                  </div>
+                </div>
+
+                <div className="flex justify-end">
+                  <button
+                    type="button"
+                    onClick={() => setInspectCycleId(null)}
+                    className="touch-target px-4 py-2 rounded-[6px] bg-stone-900 text-white text-xs font-heading font-semibold"
+                  >
+                    Fermer
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

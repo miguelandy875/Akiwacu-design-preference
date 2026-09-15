@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import {
   useCotisationsQuery,
+  useCotisationQuery,
   useCreateCotisationMutation,
   useCreateCotisationBatchMutation,
   useUpdateCotisationMutation,
@@ -62,6 +63,9 @@ export const CotisationsPage: React.FC = () => {
   const [editMontant, setEditMontant] = useState<number>(0);
   const [editModePaiement, setEditModePaiement] = useState<'ESPECES' | 'MOBILE_MONEY' | 'VIREMENT'>('ESPECES');
   const [editError, setEditError] = useState<unknown | null>(null);
+  const [inspectCotisationId, setInspectCotisationId] = useState<number | null>(null);
+
+  const { data: inspectedCotisation, isLoading: loadingInspected } = useCotisationQuery(inspectCotisationId || 0);
 
   // Live session total (Le Compteur motif)
   const sessionTotal = useMemo(() => {
@@ -633,11 +637,19 @@ export const CotisationsPage: React.FC = () => {
                           )}
                         </td>
                         <td className="py-3.5 px-4 text-right space-x-2">
+                          <button
+                            type="button"
+                            onClick={() => setInspectCotisationId(cot.id!)}
+                            className="inline-flex items-center px-2.5 py-1 text-xs font-medium rounded-[6px] text-stone-700 bg-stone-100 hover:bg-stone-200 transition-colors"
+                          >
+                            Consulter
+                          </button>
+
                           {cot.recuId && (
                             <button
                               type="button"
                               onClick={() => handleDownloadPdf(cot.recuId!)}
-                              className="inline-flex items-center px-2.5 py-1 text-xs font-medium rounded-lg text-stone-700 bg-stone-100 hover:bg-stone-200 transition-colors"
+                              className="inline-flex items-center px-2.5 py-1 text-xs font-medium rounded-[6px] text-stone-700 bg-stone-100 hover:bg-stone-200 transition-colors"
                               title="Télécharger le reçu PDF (GET /api/recus/{id}/pdf)"
                             >
                               <Download className="w-3 h-3 mr-1 text-[#e68a00]" />
@@ -653,7 +665,7 @@ export const CotisationsPage: React.FC = () => {
                               setEditModePaiement((cot.modePaiement as any) || 'ESPECES');
                               setEditError(null);
                             }}
-                            className="inline-flex items-center px-2.5 py-1 text-xs font-medium rounded-lg text-stone-700 bg-stone-100 hover:bg-stone-200 transition-colors"
+                            className="inline-flex items-center px-2.5 py-1 text-xs font-medium rounded-[6px] text-stone-700 bg-stone-100 hover:bg-stone-200 transition-colors"
                             title="Modifier (PUT /api/cotisations/{id})"
                           >
                             Modifier
@@ -742,6 +754,74 @@ export const CotisationsPage: React.FC = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* INSPECT MODAL (GET /api/cotisations/{id}) */}
+      {inspectCotisationId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs">
+          <div className="bg-white rounded-[14px] max-w-md w-full p-6 shadow-2xl border border-stone-200 animate-in fade-in zoom-in-95">
+            <div className="flex items-center justify-between pb-3 border-b border-stone-100 mb-4">
+              <div>
+                <span className="text-xs font-mono text-[#e68a00] font-bold">GET /api/cotisations/{inspectCotisationId}</span>
+                <h3 className="font-heading font-bold text-lg text-stone-900">
+                  Détail cotisation #{inspectCotisationId}
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setInspectCotisationId(null)}
+                className="text-stone-400 hover:text-stone-600 text-sm font-bold"
+              >
+                ✕
+              </button>
+            </div>
+
+            {loadingInspected && <LoadingSkeleton rows={3} />}
+
+            {inspectedCotisation && (
+              <div className="space-y-4">
+                <div className="p-4 bg-stone-50 rounded-[10px] border border-stone-200 space-y-2.5 text-xs">
+                  <div className="flex justify-between">
+                    <span className="text-stone-500">Montant versé :</span>
+                    <span className="font-bold font-heading text-stone-900 text-sm"><Montant valeur={inspectedCotisation.montant} /></span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-stone-500">Mode de paiement :</span>
+                    <span className="font-semibold text-stone-800">{inspectedCotisation.modePaiement}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-stone-500">Date cotisation :</span>
+                    <span className="font-mono text-stone-800">{inspectedCotisation.dateCotisation}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-stone-500">Membre ID :</span>
+                    <span className="font-mono text-stone-800">#{inspectedCotisation.membreId}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-stone-500">Cycle ID :</span>
+                    <span className="font-mono text-stone-800">#{inspectedCotisation.cycleId}</span>
+                  </div>
+                  <div className="flex justify-between items-center pt-2 border-t border-stone-200">
+                    <span className="text-stone-500">Statut R8 :</span>
+                    <span className="font-mono font-bold text-stone-800">
+                      {inspectedCotisation.verrouille ? 'VERROUILLÉ (Reçu émis)' : 'MODIFIABLE'}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex justify-end">
+                  <button
+                    type="button"
+                    onClick={() => setInspectCotisationId(null)}
+                    className="touch-target px-4 py-2 rounded-[6px] bg-stone-900 text-white text-xs font-heading font-semibold"
+                  >
+                    Fermer
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

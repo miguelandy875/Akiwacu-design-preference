@@ -356,6 +356,14 @@ export const useVotesQuery = (demandePretId: number) => {
   });
 };
 
+export const useVoteQuery = (demandePretId: number, voteId: number) => {
+  return useQuery({
+    queryKey: ['vote', demandePretId, voteId],
+    queryFn: () => apiClient.getVote(demandePretId, voteId),
+    enabled: Boolean(demandePretId && voteId),
+  });
+};
+
 export const useCreateVoteMutation = () => {
   const qc = useQueryClient();
   return useMutation({

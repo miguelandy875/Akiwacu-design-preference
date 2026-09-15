@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import {
   useMembresQuery,
+  useMembreQuery,
   useCreateMembreMutation,
   useUpdateMembreMutation,
   useUtilisateursQuery,
@@ -31,6 +32,9 @@ export const MembresPage: React.FC = () => {
   const [search, setSearch] = useState('');
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [editingMembre, setEditingMembre] = useState<any | null>(null);
+  const [inspectMembreId, setInspectMembreId] = useState<number | null>(null);
+
+  const { data: inspectedMembre, isLoading: loadingInspected } = useMembreQuery(inspectMembreId || 0);
 
   // Creation form state
   const [nom, setNom] = useState('');
@@ -188,7 +192,14 @@ export const MembresPage: React.FC = () => {
                     <td className="py-3.5 px-4 text-center">
                       <StatusBadge status={m.statut} />
                     </td>
-                    <td className="py-3.5 px-4 text-right">
+                    <td className="py-3.5 px-4 text-right space-x-2">
+                      <button
+                        type="button"
+                        onClick={() => setInspectMembreId(m.id!)}
+                        className="inline-flex items-center px-2.5 py-1.5 text-xs font-medium rounded-[6px] text-stone-700 bg-stone-100 hover:bg-stone-200 transition-colors"
+                      >
+                        Consulter
+                      </button>
                       <button
                         type="button"
                         onClick={() => {
@@ -199,7 +210,7 @@ export const MembresPage: React.FC = () => {
                           setEditStatut(m.statut as any);
                           setFormError(null);
                         }}
-                        className="inline-flex items-center px-3 py-1.5 text-xs font-medium rounded-lg text-stone-700 bg-stone-100 hover:bg-stone-200 transition-colors"
+                        className="inline-flex items-center px-2.5 py-1.5 text-xs font-medium rounded-[6px] text-stone-700 bg-stone-100 hover:bg-stone-200 transition-colors"
                       >
                         <Edit2 className="w-3.5 h-3.5 mr-1 text-[#e68a00]" />
                         Modifier
@@ -432,6 +443,68 @@ export const MembresPage: React.FC = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* INSPECT MODAL (GET /api/membres/{id}) */}
+      {inspectMembreId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs">
+          <div className="bg-white rounded-[14px] max-w-md w-full p-6 shadow-2xl border border-stone-200 animate-in fade-in zoom-in-95">
+            <div className="flex items-center justify-between pb-3 border-b border-stone-100 mb-4">
+              <div>
+                <span className="text-xs font-mono text-[#e68a00] font-bold">GET /api/membres/{inspectMembreId}</span>
+                <h3 className="font-heading font-bold text-lg text-stone-900">
+                  Dossier membre #{inspectMembreId}
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setInspectMembreId(null)}
+                className="text-stone-400 hover:text-stone-600 text-sm font-bold"
+              >
+                ✕
+              </button>
+            </div>
+
+            {loadingInspected && <LoadingSkeleton rows={3} />}
+
+            {inspectedMembre && (
+              <div className="space-y-4">
+                <div className="p-4 bg-stone-50 rounded-[10px] border border-stone-200 space-y-2.5 text-xs">
+                  <div className="flex justify-between">
+                    <span className="text-stone-500">Nom complet :</span>
+                    <span className="font-bold text-stone-900">{inspectedMembre.prenom} {inspectedMembre.nom}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-stone-500">Numéro membre :</span>
+                    <span className="font-mono font-semibold text-stone-800">{inspectedMembre.numeroMembre || 'Non attribué'}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-stone-500">Téléphone :</span>
+                    <span className="font-mono text-stone-800">{inspectedMembre.telephone}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-stone-500">Date d'adhésion :</span>
+                    <span className="font-mono text-stone-800">{inspectedMembre.dateAdhesion}</span>
+                  </div>
+                  <div className="flex justify-between items-center pt-2 border-t border-stone-200">
+                    <span className="text-stone-500">Statut :</span>
+                    <StatusBadge status={inspectedMembre.statut} />
+                  </div>
+                </div>
+
+                <div className="flex justify-end">
+                  <button
+                    type="button"
+                    onClick={() => setInspectMembreId(null)}
+                    className="touch-target px-4 py-2 rounded-[6px] bg-stone-900 text-white text-xs font-heading font-semibold"
+                  >
+                    Fermer
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

@@ -17,13 +17,17 @@ import {
 } from 'lucide-react';
 import {
   useDemandesPretQuery,
+  useDemandePretQuery,
   useCreateDemandePretMutation,
   useVotesQuery,
+  useVoteQuery,
   useCreateVoteMutation,
   useVoteDecisionQuery,
   usePretsQuery,
+  usePretQuery,
   useDebloquerPretMutation,
   usePretEcheancierQuery,
+  useRemboursementsParPretQuery,
   useMembresQuery,
   useCyclesQuery,
 } from '../api/queries';
@@ -55,6 +59,7 @@ export const PretsPage: React.FC = () => {
   // Selected for inspection / action
   const [selectedDemandeId, setSelectedDemandeId] = useState<number | null>(null);
   const [selectedPretId, setSelectedPretId] = useState<number | null>(null);
+  const [selectedVoteId, setSelectedVoteId] = useState<number | null>(null);
 
   // Modals
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -74,13 +79,17 @@ export const PretsPage: React.FC = () => {
   const [voteError, setVoteError] = useState<unknown | null>(null);
   const [debloquerError, setDebloquerError] = useState<unknown | null>(null);
 
-  // Queries for selected demande
+  // Queries for selected demande and pret
   const { data: votes = [] } = useVotesQuery(selectedDemandeId || 0);
   const { data: decision } = useVoteDecisionQuery(selectedDemandeId || 0);
+  const { data: singleDemande } = useDemandePretQuery(selectedDemandeId || 0);
+  const { data: singlePret } = usePretQuery(selectedPretId || 0);
+  const { data: singleVote } = useVoteQuery(selectedDemandeId || 0, selectedVoteId || 0);
   const { data: echeancier } = usePretEcheancierQuery(selectedPretId || 0);
+  const { data: remboursementsDuPret = [] } = useRemboursementsParPretQuery(selectedPretId || 0);
 
-  const selectedDemande = useMemo(() => demandes.find((d) => d.id === selectedDemandeId), [demandes, selectedDemandeId]);
-  const selectedPret = useMemo(() => prets.find((p) => p.id === selectedPretId), [prets, selectedPretId]);
+  const selectedDemande = useMemo(() => singleDemande || demandes.find((d) => d.id === selectedDemandeId), [singleDemande, demandes, selectedDemandeId]);
+  const selectedPret = useMemo(() => singlePret || prets.find((p) => p.id === selectedPretId), [singlePret, prets, selectedPretId]);
 
   // Handle new demande submission
   const handleCreateDemande = async (e: React.FormEvent) => {
@@ -395,24 +404,46 @@ export const PretsPage: React.FC = () => {
                   <p className="text-xs text-stone-500 italic">Aucun vote enregistré pour l'instant.</p>
                 ) : (
                   <div className="space-y-2">
-                    {votes.map((v) => (
-                      <div key={v.id} className="p-3 bg-white rounded-xl border border-stone-200 text-xs flex items-start justify-between">
-                        <div>
-                          <div className="flex items-center space-x-2">
-                            <span className="font-bold text-stone-900 font-heading">
-                              Commissaire #{v.commissaireId}
+                    {votes.map((v) => {
+                      const isVoteSelected = selectedVoteId === v.id;
+                      return (
+                        <div
+                          key={v.id}
+                          onClick={() => setSelectedVoteId(isVoteSelected ? null : v.id)}
+                          className={`p-3 rounded-[10px] border text-xs cursor-pointer transition-colors ${
+                            isVoteSelected
+                              ? 'border-[#e68a00] bg-amber-50/50'
+                              : 'bg-white border-stone-200 hover:border-stone-300'
+                          }`}
+                        >
+                          <div className="flex items-start justify-between">
+                            <div>
+                              <div className="flex items-center space-x-2">
+                                <span className="font-bold text-stone-900 font-heading">
+                                  Commissaire #{v.commissaireId}
+                                </span>
+                                <StatusBadge status={v.sens} />
+                              </div>
+                              {v.commentaire && (
+                                <p className="text-stone-600 mt-1 italic">"{v.commentaire}"</p>
+                              )}
+                            </div>
+                            <span className="text-[10px] text-stone-400 font-mono">
+                              {new Date(v.dateVote || '').toLocaleDateString('fr-FR')}
                             </span>
-                            <StatusBadge status={v.sens} />
                           </div>
-                          {v.commentaire && (
-                            <p className="text-stone-600 mt-1 italic">"{v.commentaire}"</p>
+
+                          {/* Detail of selected vote (GET /api/demandes-pret/{id}/votes/{voteId}) */}
+                          {isVoteSelected && singleVote && (
+                            <div className="mt-2 pt-2 border-t border-stone-200/80 text-[11px] text-stone-600 space-y-1">
+                              <p className="font-mono text-stone-500">GET /api/demandes-pret/{selectedDemandeId}/votes/{singleVote.id}</p>
+                              <p><span className="font-semibold">Horodatage précis :</span> {singleVote.dateVote}</p>
+                              <p><span className="font-semibold">Statut du scrutin :</span> Enregistré & inaltérable</p>
+                            </div>
                           )}
                         </div>
-                        <span className="text-[10px] text-stone-400 font-mono">
-                          {new Date(v.dateVote || '').toLocaleDateString('fr-FR')}
-                        </span>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </div>
@@ -525,8 +556,42 @@ export const PretsPage: React.FC = () => {
                     </div>
                   </div>
 
-                  <div className="p-3 bg-amber-50/60 rounded-xl border border-amber-200 text-xs text-amber-900">
+                  <div className="p-3 bg-amber-50/60 rounded-[10px] border border-amber-200 text-xs text-amber-900">
                     <span className="font-bold">Règle R7 appliquée :</span> La date d’échéance ({echeancier.dateEcheance}) est strictement inférieure ou égale à la date de fin du cycle ({activeCycle?.dateFin}).
+                  </div>
+
+                  {/* Remboursements associés au prêt (GET /api/remboursements/pret/{pretId}) */}
+                  <div className="pt-3 border-t border-stone-100">
+                    <div className="flex items-center justify-between mb-2">
+                      <h4 className="text-xs font-bold text-stone-700 uppercase tracking-wider font-heading">
+                        Remboursements perçus ({remboursementsDuPret.length})
+                      </h4>
+                      <span className="text-[10px] font-mono text-stone-400">GET /api/remboursements/pret/{selectedPret.id}</span>
+                    </div>
+
+                    {remboursementsDuPret.length === 0 ? (
+                      <p className="text-xs text-stone-500 italic">Aucun remboursement effectué pour le moment.</p>
+                    ) : (
+                      <div className="space-y-1.5">
+                        {remboursementsDuPret.map((r) => (
+                          <div key={r.id} className="p-2.5 rounded-[10px] bg-stone-50 border border-stone-200 flex items-center justify-between text-xs">
+                            <div>
+                              <span className="font-heading font-bold text-stone-900">
+                                <Montant valeur={r.montant} />
+                              </span>
+                              <span className="text-[10px] text-stone-500 font-mono ml-2">
+                                {r.dateRemboursement}
+                              </span>
+                            </div>
+                            {r.verrouille && (
+                              <span className="text-[10px] font-mono px-1.5 py-0.5 rounded-[6px] bg-stone-200 text-stone-700">
+                                R8 Verrouillé
+                              </span>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </div>
               )}

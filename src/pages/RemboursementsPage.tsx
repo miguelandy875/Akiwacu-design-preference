@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import {
   useRemboursementsQuery,
+  useRemboursementQuery,
   usePretsQuery,
   useMembresQuery,
   useCreateRemboursementMutation,
@@ -34,6 +35,9 @@ export const RemboursementsPage: React.FC = () => {
 
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [editingRemboursement, setEditingRemboursement] = useState<any | null>(null);
+  const [inspectRemboursementId, setInspectRemboursementId] = useState<number | null>(null);
+
+  const { data: inspectedRemboursement, isLoading: loadingInspected } = useRemboursementQuery(inspectRemboursementId || 0);
 
   // Form states
   const [pretId, setPretId] = useState<number>(prets[0]?.id || 1);
@@ -194,11 +198,18 @@ export const RemboursementsPage: React.FC = () => {
                         )}
                       </td>
                       <td className="py-3.5 px-4 text-right space-x-2">
+                        <button
+                          type="button"
+                          onClick={() => setInspectRemboursementId(r.id!)}
+                          className="inline-flex items-center px-2 py-1 text-xs font-medium rounded-[6px] text-stone-700 bg-stone-100 hover:bg-stone-200"
+                        >
+                          Consulter
+                        </button>
                         {r.verrouille && (
                           <button
                             type="button"
                             onClick={() => handleDownloadPdf(r.id!)}
-                            className="inline-flex items-center px-2.5 py-1 text-xs font-medium rounded-lg text-stone-700 bg-stone-100 hover:bg-stone-200"
+                            className="inline-flex items-center px-2.5 py-1 text-xs font-medium rounded-[6px] text-stone-700 bg-stone-100 hover:bg-stone-200"
                             title="Télécharger reçu officiel (R8)"
                           >
                             <Download className="w-3 h-3 mr-1 text-[#e68a00]" />
@@ -399,6 +410,66 @@ export const RemboursementsPage: React.FC = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* INSPECT MODAL (GET /api/remboursements/{id}) */}
+      {inspectRemboursementId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs">
+          <div className="bg-white rounded-[14px] max-w-md w-full p-6 shadow-2xl border border-stone-200 animate-in fade-in zoom-in-95">
+            <div className="flex items-center justify-between pb-3 border-b border-stone-100 mb-4">
+              <div>
+                <span className="text-xs font-mono text-[#e68a00] font-bold">GET /api/remboursements/{inspectRemboursementId}</span>
+                <h3 className="font-heading font-bold text-lg text-stone-900">
+                  Détail remboursement #{inspectRemboursementId}
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setInspectRemboursementId(null)}
+                className="text-stone-400 hover:text-stone-600 text-sm font-bold"
+              >
+                ✕
+              </button>
+            </div>
+
+            {loadingInspected && <LoadingSkeleton rows={3} />}
+
+            {inspectedRemboursement && (
+              <div className="space-y-4">
+                <div className="p-4 bg-stone-50 rounded-[10px] border border-stone-200 space-y-2.5 text-xs">
+                  <div className="flex justify-between">
+                    <span className="text-stone-500">Montant remboursé :</span>
+                    <span className="font-bold font-heading text-stone-900 text-sm"><Montant valeur={inspectedRemboursement.montant} /></span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-stone-500">Date versement :</span>
+                    <span className="font-mono text-stone-800">{inspectedRemboursement.dateRemboursement}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-stone-500">Dossier prêt lié :</span>
+                    <span className="font-mono font-bold text-stone-800">Prêt #{inspectedRemboursement.pretId}</span>
+                  </div>
+                  <div className="flex justify-between items-center pt-2 border-t border-stone-200">
+                    <span className="text-stone-500">Verrouillage R8 :</span>
+                    <span className="font-mono font-bold text-stone-800">
+                      {inspectedRemboursement.verrouille ? 'SCELLÉ (Reçu émis)' : 'NON SCELLÉ'}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex justify-end">
+                  <button
+                    type="button"
+                    onClick={() => setInspectRemboursementId(null)}
+                    className="touch-target px-4 py-2 rounded-[6px] bg-stone-900 text-white text-xs font-heading font-semibold"
+                  >
+                    Fermer
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
