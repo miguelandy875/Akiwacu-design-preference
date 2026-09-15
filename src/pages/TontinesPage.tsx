@@ -7,6 +7,7 @@ import {
   ShieldAlert,
   Building,
   Calendar,
+  Ticket,
 } from 'lucide-react';
 import {
   useTontinesQuery,
@@ -17,6 +18,7 @@ import {
 import { LoadingSkeleton } from '../components/ui-states/LoadingSkeleton';
 import { EmptyState } from '../components/ui-states/EmptyState';
 import { ErrorState } from '../components/ui-states/ErrorState';
+import { InvitationModal } from '../components/invitations/InvitationModal';
 
 export const TontinesPage: React.FC = () => {
   const { data: tontines = [], isLoading, isError, error, refetch } = useTontinesQuery();

@@ -1,6 +1,6 @@
 import { components } from './openapi-types';
 import { ApiError, DecodedToken, Role } from './types';
-import { mockDb } from './mock-store';
+import { mockDb, Invitation } from './mock-store';
 
 export type Schemas = components['schemas'];
 
@@ -1110,6 +1110,290 @@ class ApiClient {
   async getTransactionsParCycle(cycleId: number): Promise<Schemas['TransactionCaisseResponse'][]> {
     return this.request(`/api/transactions-caisse/cycle/${cycleId}`, { method: 'GET' }, () => {
       return mockDb.transactionsCaisse.filter((t) => t.cycleId === cycleId);
+    });
+  }
+
+  /* ==========================================================================
+     12. INVITATIONS & ONBOARDING PORTAL (Rôles & Tontines)
+     ========================================================================== */
+  async getInvitations(tontineId?: number): Promise<Invitation[]> {
+    return this.request(`/api/invitations${tontineId ? `?tontineId=${tontineId}` : ''}`, { method: 'GET' }, () => {
+      if (tontineId) {
+        return mockDb.invitations.filter((i) => i.tontineId === tontineId);
+      }
+      return mockDb.invitations;
+    });
+  }
+
+  async creerInvitation(data: {
+    tontineId: number;
+    role: Role;
+    codePersonnalise?: string;
+  }): Promise<Invitation> {
+    return this.request('/api/invitations', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }, () => {
+      const tontine = mockDb.tontines.find((t) => t.id === data.tontineId) || mockDb.tontines[0];
+      const currentUser = this.getCurrentUser();
+      const codeClean = (data.codePersonnalise?.trim() || `${tontine?.nom?.replace(/[^a-zA-Z0-9]/g, '').slice(0, 8).toUpperCase() || 'TONTINE'}-${data.role}-${Math.floor(1000 + Math.random() * 9000)}`).toUpperCase();
+
+      if (mockDb.invitations.some((i) => i.code === codeClean)) {
+        throw new ApiError(409, 'Ce code d’invitation existe déjà.');
+      }
+
+      const nouvelleInvitation: Invitation = {
+        id: Date.now(),
+        code: codeClean,
+        tontineId: data.tontineId,
+        tontineNom: tontine?.nom || 'Tontine Akiwacu',
+        role: data.role,
+        dateCreation: new Date().toISOString().split('T')[0],
+        creePar: currentUser ? `${currentUser.prenom} ${currentUser.nom}` : 'Administrateur',
+        statut: 'ACTIVE',
+        nbUtilisations: 0,
+      };
+
+      mockDb.invitations.unshift(nouvelleInvitation);
+      mockDb.save();
+      return nouvelleInvitation;
+    });
+  }
+
+  async verifierInvitation(code: string): Promise<Invitation> {
+    return this.request(`/api/invitations/verifier?code=${encodeURIComponent(code)}`, { method: 'GET' }, () => {
+      const trimmed = code.trim().toUpperCase();
+      const inv = mockDb.invitations.find((i) => i.code === trimmed && i.statut === 'ACTIVE');
+      if (!inv) {
+        throw new ApiError(404, 'Code d’invitation introuvable ou inactif. Vérifiez votre code.');
+      }
+      return inv;
+    });
+  }
+
+  async rejoindreTontine(
+    code: string,
+    utilisateur: {
+      nom: string;
+      prenom: string;
+      email: string;
+      motDePasse: string;
+      telephone?: string;
+    }
+  ): Promise<{
+    token: string;
+    utilisateur: components['schemas']['UtilisateurResponse'];
+    tontine: components['schemas']['TontineResponse'];
+    role: Role;
+  }> {
+    return this.request('/api/invitations/rejoindre', {
+      method: 'POST',
+      body: JSON.stringify({ code, ...utilisateur }),
+    }, () => {
+      const trimmed = code.trim().toUpperCase();
+      const inv = mockDb.invitations.find((i) => i.code === trimmed && i.statut === 'ACTIVE');
+      if (!inv) {
+        throw new ApiError(404, 'Code d’invitation invalide ou expiré.');
+      }
+
+      const emailNormalized = utilisateur.email.trim().toLowerCase();
+      if (mockDb.utilisateurs.some((u) => u.email.toLowerCase() === emailNormalized)) {
+        throw new ApiError(409, 'Un compte avec cette adresse email existe déjà. Veuillez vous connecter.');
+      }
+
+      const newUserId = Date.now();
+      const assignedRole = inv.role;
+
+      // 1. Create Utilisateur
+      const newUser = {
+        id: newUserId,
+        email: emailNormalized,
+        motDePasse: utilisateur.motDePasse,
+        nom: utilisateur.nom.trim(),
+        prenom: utilisateur.prenom.trim(),
+        telephone: utilisateur.telephone?.trim() || '+257 79 00 00 00',
+        actif: true,
+        roles: [assignedRole],
+      };
+      mockDb.utilisateurs.push(newUser);
+
+      // 2. If role is MEMBRE, register as Membre & add to active cycle
+      if (assignedRole === 'MEMBRE') {
+        const nextNum = `MEM-2026-${String(mockDb.membres.length + 1).padStart(3, '0')}`;
+        const newMembre = {
+          id: mockDb.membres.length ? Math.max(...mockDb.membres.map((m) => m.id || 0)) + 1 : 1,
+          numeroMembre: nextNum,
+          nom: newUser.nom,
+          prenom: newUser.prenom,
+          telephone: newUser.telephone,
+          dateAdhesion: new Date().toISOString().split('T')[0],
+          statut: 'ACTIF' as const,
+          utilisateurId: newUserId,
+        };
+        mockDb.membres.push(newMembre);
+
+        // Auto adhere to active cycle
+        const openCycle = mockDb.cycles.find((c) => c.statut === 'OUVERT') || mockDb.cycles[0];
+        if (openCycle && openCycle.id) {
+          mockDb.adhesions.push({
+            id: mockDb.adhesions.length ? Math.max(...mockDb.adhesions.map((a) => a.id || 0)) + 1 : 1,
+            membreId: newMembre.id,
+            cycleId: openCycle.id,
+            dateAdhesion: new Date().toISOString().split('T')[0],
+            statut: 'ACTIVE',
+          });
+        }
+      }
+
+      // 3. Mark invitation usage
+      inv.nbUtilisations = (inv.nbUtilisations || 0) + 1;
+
+      // 4. Create and persist token
+      const token = createMockJwt({
+        id: newUserId,
+        email: emailNormalized,
+        nom: newUser.nom,
+        prenom: newUser.prenom,
+        roles: [assignedRole],
+        tontineId: inv.tontineId,
+      });
+
+      setStoredToken(token);
+      mockDb.save();
+
+      const tontine = mockDb.tontines.find((t) => t.id === inv.tontineId) || mockDb.tontines[0];
+
+      return {
+        token,
+        utilisateur: {
+          id: newUserId,
+          email: emailNormalized,
+          nom: newUser.nom,
+          prenom: newUser.prenom,
+          telephone: newUser.telephone,
+          roles: [assignedRole],
+          actif: true,
+        },
+        tontine,
+        role: assignedRole,
+      };
+    });
+  }
+
+  async creerTontineComplete(data: {
+    nom: string;
+    description?: string;
+    periodicite?: 'MENSUELLE' | 'HEBDOMADAIRE';
+    montantCotisation?: number;
+    administrateur: {
+      nom: string;
+      prenom: string;
+      email: string;
+      motDePasse: string;
+      telephone?: string;
+    };
+  }): Promise<{
+    tontine: components['schemas']['TontineResponse'];
+    token: string;
+    utilisateur: components['schemas']['UtilisateurResponse'];
+    invitationCode: string;
+  }> {
+    return this.request('/api/tontines/creation-complete', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }, () => {
+      const emailNormalized = data.administrateur.email.trim().toLowerCase();
+      if (mockDb.utilisateurs.some((u) => u.email.toLowerCase() === emailNormalized)) {
+        throw new ApiError(409, 'Cet email d’administrateur est déjà utilisé.');
+      }
+
+      const newTontineId = mockDb.tontines.length
+        ? Math.max(...mockDb.tontines.map((t) => t.id || 0)) + 1
+        : 1;
+
+      const newTontine: components['schemas']['TontineResponse'] = {
+        id: newTontineId,
+        nom: data.nom.trim(),
+        description: data.description?.trim() || 'Association communautaire d’épargne et de crédit',
+        dateCreation: new Date().toISOString().split('T')[0],
+        statut: 'ACTIVE',
+      };
+      mockDb.tontines.push(newTontine);
+
+      // Create admin user
+      const newUserId = Date.now();
+      const adminUser = {
+        id: newUserId,
+        email: emailNormalized,
+        motDePasse: data.administrateur.motDePasse,
+        nom: data.administrateur.nom.trim(),
+        prenom: data.administrateur.prenom.trim(),
+        telephone: data.administrateur.telephone?.trim() || '+257 79 00 00 00',
+        actif: true,
+        roles: ['ADMIN', 'GESTIONNAIRE'] as Role[],
+      };
+      mockDb.utilisateurs.push(adminUser);
+
+      // Create inaugural cycle
+      const newCycleId = mockDb.cycles.length
+        ? Math.max(...mockDb.cycles.map((c) => c.id || 0)) + 1
+        : 1;
+
+      const startDate = new Date();
+      const endDate = new Date();
+      endDate.setFullYear(endDate.getFullYear() + 1);
+
+      mockDb.cycles.push({
+        id: newCycleId,
+        libelle: `Cycle Inaugural — ${newTontine.nom}`,
+        dateDebut: startDate.toISOString().split('T')[0],
+        dateFin: endDate.toISOString().split('T')[0],
+        montantCotisation: data.montantCotisation || 50000,
+        periodicite: data.periodicite || 'MENSUELLE',
+        statut: 'OUVERT',
+      });
+
+      // Create default member invitation
+      const inviteCode = `${newTontine.nom.replace(/[^a-zA-Z0-9]/g, '').slice(0, 8).toUpperCase() || 'TONTINE'}-MEMBRE-${Math.floor(100 + Math.random() * 900)}`;
+      mockDb.invitations.push({
+        id: Date.now() + 1,
+        code: inviteCode,
+        tontineId: newTontineId,
+        tontineNom: newTontine.nom,
+        role: 'MEMBRE',
+        dateCreation: new Date().toISOString().split('T')[0],
+        creePar: `${adminUser.prenom} ${adminUser.nom}`,
+        statut: 'ACTIVE',
+        nbUtilisations: 0,
+      });
+
+      // Login as this new admin
+      const token = createMockJwt({
+        id: newUserId,
+        email: emailNormalized,
+        nom: adminUser.nom,
+        prenom: adminUser.prenom,
+        roles: ['ADMIN', 'GESTIONNAIRE'],
+        tontineId: newTontineId,
+      });
+
+      setStoredToken(token);
+      mockDb.save();
+
+      return {
+        tontine: newTontine,
+        token,
+        utilisateur: {
+          id: newUserId,
+          email: emailNormalized,
+          nom: adminUser.nom,
+          prenom: adminUser.prenom,
+          telephone: adminUser.telephone,
+          roles: ['ADMIN', 'GESTIONNAIRE'],
+          actif: true,
+        },
+        invitationCode: inviteCode,
+      };
     });
   }
 }

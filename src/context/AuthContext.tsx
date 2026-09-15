@@ -7,6 +7,7 @@ interface AuthContextType {
   token: string | null;
   isAuthenticated: boolean;
   login: (email: string, mdp: string) => Promise<void>;
+  setSession: (token: string) => void;
   logout: () => void;
   switchPersona: (personaEmail: string) => void;
   hasRole: (requiredRoles: Role[]) => boolean;
@@ -54,6 +55,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setToken(res.jeton);
       setUser(decodeToken(res.jeton));
     }
+  };
+
+  const setSession = (newToken: string) => {
+    setStoredToken(newToken);
+    setToken(newToken);
+    setUser(decodeToken(newToken));
   };
 
   const logout = () => {

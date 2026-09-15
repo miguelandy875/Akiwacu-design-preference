@@ -16,9 +16,11 @@ import {
   ShieldCheck,
   BookOpenCheck,
   FileCheck2,
+  UserPlus,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { Role } from '../../api/types';
+import { InvitationModal } from '../invitations/InvitationModal';
 
 interface NavItem {
   name: string;
@@ -32,6 +34,7 @@ export const AppLayout: React.FC = () => {
   const { user, logout, switchPersona, hasRole } = useAuth();
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
   const [personaMenuOpen, setPersonaMenuOpen] = useState(false);
+  const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -135,8 +138,21 @@ export const AppLayout: React.FC = () => {
               <span className="text-[#e68a00] font-heading font-semibold">50 000 BIF / mois</span>
             </div>
 
-            {/* Right: Persona switcher & User profile */}
-            <div className="flex items-center space-x-3 relative">
+            {/* Right: Persona switcher, Invite button & User profile */}
+            <div className="flex items-center space-x-2.5 relative">
+              {/* Invite button for Admin and Gestionnaire */}
+              {isAdminOrGestionnaire && (
+                <button
+                  type="button"
+                  onClick={() => setIsInviteModalOpen(true)}
+                  className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-[#e68a00] hover:bg-[#cc7a00] text-stone-950 font-heading font-bold text-xs shadow-xs transition-colors"
+                  title="Générer des invitations & codes pour de nouveaux membres ou rôles"
+                >
+                  <UserPlus className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Inviter</span>
+                </button>
+              )}
+
               {/* Persona fast test dropdown */}
               <div className="relative">
                 <button
@@ -398,6 +414,12 @@ export const AppLayout: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Global Invitation Modal */}
+      <InvitationModal
+        isOpen={isInviteModalOpen}
+        onClose={() => setIsInviteModalOpen(false)}
+      />
     </div>
   );
 };

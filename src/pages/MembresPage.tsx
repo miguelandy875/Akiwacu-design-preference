@@ -9,6 +9,7 @@ import {
   CheckCircle,
   XCircle,
   AlertTriangle,
+  Ticket,
 } from 'lucide-react';
 import {
   useMembresQuery,
@@ -21,6 +22,7 @@ import { StatusBadge } from '../components/ui-states/StatusBadge';
 import { LoadingSkeleton } from '../components/ui-states/LoadingSkeleton';
 import { EmptyState } from '../components/ui-states/EmptyState';
 import { ErrorState } from '../components/ui-states/ErrorState';
+import { InvitationModal } from '../components/invitations/InvitationModal';
 
 export const MembresPage: React.FC = () => {
   const { data: membres = [], isLoading, isError, error, refetch } = useMembresQuery();
@@ -31,6 +33,7 @@ export const MembresPage: React.FC = () => {
 
   const [search, setSearch] = useState('');
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showInviteModal, setShowInviteModal] = useState(false);
   const [editingMembre, setEditingMembre] = useState<any | null>(null);
   const [inspectMembreId, setInspectMembreId] = useState<number | null>(null);
 
@@ -122,17 +125,29 @@ export const MembresPage: React.FC = () => {
           </p>
         </div>
 
-        <button
-          type="button"
-          onClick={() => {
-            setShowCreateModal(true);
-            setFormError(null);
-          }}
-          className="touch-target inline-flex items-center px-4 py-2.5 rounded-xl bg-[#e68a00] hover:bg-[#cc7a00] text-white font-heading font-semibold text-sm shadow-xs transition-colors shrink-0"
-        >
-          <UserPlus className="w-4 h-4 mr-2" />
-          <span>Nouveau Membre</span>
-        </button>
+        <div className="flex items-center space-x-2.5 shrink-0">
+          <button
+            type="button"
+            onClick={() => setShowInviteModal(true)}
+            className="touch-target inline-flex items-center px-3.5 py-2.5 rounded-xl border border-stone-300 bg-white hover:bg-stone-50 text-stone-800 font-heading font-semibold text-sm shadow-xs transition-colors"
+            title="Générer un lien ou code d'invitation pour un nouveau membre"
+          >
+            <Ticket className="w-4 h-4 mr-2 text-[#e68a00]" />
+            <span>Inviter par Code</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setShowCreateModal(true);
+              setFormError(null);
+            }}
+            className="touch-target inline-flex items-center px-4 py-2.5 rounded-xl bg-[#e68a00] hover:bg-[#cc7a00] text-white font-heading font-semibold text-sm shadow-xs transition-colors"
+          >
+            <UserPlus className="w-4 h-4 mr-2" />
+            <span>Nouveau Membre</span>
+          </button>
+        </div>
       </div>
 
       <div className="bg-white rounded-2xl border border-stone-200 p-4 shadow-xs">
@@ -508,6 +523,13 @@ export const MembresPage: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Member Invitation Modal */}
+      <InvitationModal
+        isOpen={showInviteModal}
+        onClose={() => setShowInviteModal(false)}
+        defaultRole="MEMBRE"
+      />
     </div>
   );
 };

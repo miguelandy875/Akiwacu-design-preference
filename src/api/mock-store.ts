@@ -13,6 +13,19 @@ type Pret = components['schemas']['PretResponse'];
 type Remboursement = components['schemas']['RemboursementResponse'];
 type TransactionCaisse = components['schemas']['TransactionCaisseResponse'];
 
+export interface Invitation {
+  id: number;
+  code: string;
+  tontineId: number;
+  tontineNom: string;
+  role: 'MEMBRE' | 'TRESORIER' | 'COMMISSAIRE' | 'GESTIONNAIRE';
+  dateCreation: string;
+  expireA?: string;
+  creePar: string;
+  statut: 'ACTIVE' | 'UTILISEE' | 'EXPIREE';
+  nbUtilisations: number;
+}
+
 // Store in localStorage if present so test operations persist during prototype navigation
 const STORAGE_KEY = 'akiwacu_prototype_db_v1';
 
@@ -28,6 +41,7 @@ class MockDatabase {
   prets: Pret[] = [];
   remboursements: Remboursement[] = [];
   transactionsCaisse: TransactionCaisse[] = [];
+  invitations: Invitation[] = [];
 
   constructor() {
     this.load();
@@ -51,6 +65,7 @@ class MockDatabase {
         prets: this.prets,
         remboursements: this.remboursements,
         transactionsCaisse: this.transactionsCaisse,
+        invitations: this.invitations,
       }));
     } catch {
       // ignore storage errors
@@ -73,6 +88,7 @@ class MockDatabase {
         this.prets = data.prets || [];
         this.remboursements = data.remboursements || [];
         this.transactionsCaisse = data.transactionsCaisse || [];
+        this.invitations = data.invitations || [];
       }
     } catch {
       // ignore
@@ -442,6 +458,53 @@ class MockDatabase {
         dateTransaction: '2026-09-01',
         valideParId: 2,
         referenceOperation: 'COTISATION:4',
+      },
+    ];
+
+    this.invitations = [
+      {
+        id: 1,
+        code: 'TONTINE-MEMBRE-2026',
+        tontineId: 1,
+        tontineNom: 'Tontine Dushirehamwe Gitega',
+        role: 'MEMBRE',
+        dateCreation: '2026-01-10',
+        creePar: 'Andy Miguel (Admin)',
+        statut: 'ACTIVE',
+        nbUtilisations: 3,
+      },
+      {
+        id: 2,
+        code: 'TONTINE-TRESORIER-2026',
+        tontineId: 1,
+        tontineNom: 'Tontine Dushirehamwe Gitega',
+        role: 'TRESORIER',
+        dateCreation: '2026-01-10',
+        creePar: 'Andy Miguel (Admin)',
+        statut: 'ACTIVE',
+        nbUtilisations: 1,
+      },
+      {
+        id: 3,
+        code: 'TONTINE-COMMISSAIRE-2026',
+        tontineId: 1,
+        tontineNom: 'Tontine Dushirehamwe Gitega',
+        role: 'COMMISSAIRE',
+        dateCreation: '2026-01-10',
+        creePar: 'Andy Miguel (Admin)',
+        statut: 'ACTIVE',
+        nbUtilisations: 2,
+      },
+      {
+        id: 4,
+        code: 'TONTINE-GESTION-2026',
+        tontineId: 1,
+        tontineNom: 'Tontine Dushirehamwe Gitega',
+        role: 'GESTIONNAIRE',
+        dateCreation: '2026-01-10',
+        creePar: 'Andy Miguel (Admin)',
+        statut: 'ACTIVE',
+        nbUtilisations: 0,
       },
     ];
   }

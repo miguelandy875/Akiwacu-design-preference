@@ -21,8 +21,11 @@ import RecusPage from '../pages/RecusPage';
 export const AppRouter: React.FC = () => {
   return (
     <Routes>
-      {/* Public Authentication Route */}
+      {/* Public Authentication & Onboarding Routes */}
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/rejoindre" element={<Navigate to="/login?tab=rejoindre" replace />} />
+      <Route path="/creer-tontine" element={<Navigate to="/login?tab=creer" replace />} />
+      <Route path="/register" element={<Navigate to="/login?tab=rejoindre" replace />} />
 
       {/* Protected Main Application Layout */}
       <Route
