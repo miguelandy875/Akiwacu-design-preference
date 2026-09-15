@@ -1,0 +1,6 @@
+{
+  "name": "Akiwacu",
+  "description": "Application client web responsive et PWA pour la gestion communautaire d'épargne et de crédit Akiwacu (Direction C « Le Compteur »)",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
